@@ -1,12 +1,13 @@
 package com.upc.idbi.gateway.auth;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Locale;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -40,8 +41,7 @@ public class AuthService {
                 .phone(request.phone().trim())
                 .company(request.company().trim())
                 .city(
-                        request.city() == null ||
-                                request.city().isBlank()
+                        request.city() == null || request.city().isBlank()
                                 ? "Lima"
                                 : request.city().trim()
                 )
@@ -61,6 +61,43 @@ public class AuthService {
                 savedUser.getCity(),
                 savedUser.getRole(),
                 "Usuario registrado correctamente"
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public LoginResponse login(LoginRequest request) {
+
+        String normalizedEmail = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        UserEntity user = userRepository
+                .findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Correo o contraseña incorrectos"
+                ));
+
+        boolean passwordMatches = passwordEncoder.matches(
+                request.password(),
+                user.getPassword()
+        );
+
+        if (!passwordMatches) {
+            throw new IllegalArgumentException(
+                    "Correo o contraseña incorrectos"
+            );
+        }
+
+        String accessToken = UUID.randomUUID().toString();
+        int expiresInMinutes = 60;
+
+        return new LoginResponse(
+                accessToken,
+                expiresInMinutes,
+                user.getId(),
+                user.getFullName(),
+                user.getEmail(),
+                user.getRole()
         );
     }
 }
