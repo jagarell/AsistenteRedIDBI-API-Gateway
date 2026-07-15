@@ -5,6 +5,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
@@ -99,5 +100,90 @@ public class AuthService {
                 user.getEmail(),
                 user.getRole()
         );
+    }
+
+    @Transactional
+    public ForgotPasswordResponse forgotPassword(
+            ForgotPasswordRequest request
+    ) {
+        String normalizedEmail = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        UserEntity user = userRepository
+                .findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No existe una cuenta registrada con ese correo"
+                ));
+
+        String recoveryCode = generateRecoveryCode();
+        int expirationMinutes = 10;
+
+        user.setResetCode(recoveryCode);
+        user.setResetCodeExpiresAt(
+                LocalDateTime.now().plusMinutes(expirationMinutes)
+        );
+
+        userRepository.save(user);
+
+        return new ForgotPasswordResponse(
+                "Código de recuperación generado correctamente",
+                recoveryCode,
+                expirationMinutes
+        );
+    }
+
+    @Transactional
+    public ResetPasswordResponse resetPassword(
+            ResetPasswordRequest request
+    ) {
+        String normalizedEmail = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException(
+                    "Las contraseñas no coinciden"
+            );
+        }
+
+        UserEntity user = userRepository
+                .findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Correo o código incorrectos"
+                ));
+
+        if (user.getResetCode() == null ||
+                !user.getResetCode().equals(request.code().trim())) {
+            throw new IllegalArgumentException(
+                    "El código de recuperación es incorrecto"
+            );
+        }
+
+        if (user.getResetCodeExpiresAt() == null ||
+                user.getResetCodeExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException(
+                    "El código de recuperación ha expirado"
+            );
+        }
+
+        user.setPassword(
+                passwordEncoder.encode(request.newPassword())
+        );
+
+        user.setResetCode(null);
+        user.setResetCodeExpiresAt(null);
+
+        userRepository.save(user);
+
+        return new ResetPasswordResponse(
+                "Contraseña actualizada correctamente"
+        );
+    }
+
+    private String generateRecoveryCode() {
+        SecureRandom random = new SecureRandom();
+        int code = 100000 + random.nextInt(900000);
+        return String.valueOf(code);
     }
 }

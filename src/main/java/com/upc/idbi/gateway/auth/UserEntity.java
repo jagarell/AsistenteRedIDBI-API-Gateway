@@ -49,4 +49,10 @@ public class UserEntity {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "reset_code", length = 10)
+    private String resetCode;
+
+    @Column(name = "reset_code_expires_at")
+    private LocalDateTime resetCodeExpiresAt;
 }
