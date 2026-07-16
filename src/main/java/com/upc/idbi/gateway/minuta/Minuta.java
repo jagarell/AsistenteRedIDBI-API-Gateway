@@ -37,6 +37,13 @@ public class Minuta {
     @Column(length = 255)
     private String address;
 
+    /** Persona de contacto del cliente (para enviarle la propuesta). */
+    @Column(name = "contact_name", length = 150)
+    private String contactName;
+
+    @Column(name = "contact_phone", length = 30)
+    private String contactPhone;
+
     /** Técnico que creó la minuta. */
     @Column(name = "technician_id")
     private Long technicianId;

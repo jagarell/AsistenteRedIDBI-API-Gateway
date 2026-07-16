@@ -82,6 +82,12 @@
             <artifactId>pdfbox</artifactId>
             <version>2.0.31</version>
         </dependency>
+
+        <!-- Envío de correo (recuperación de contraseña, propuesta técnica) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

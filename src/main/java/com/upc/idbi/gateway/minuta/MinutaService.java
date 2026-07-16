@@ -42,6 +42,8 @@ public class MinutaService {
                 .evaluationId(request.evaluationId())
                 .clientName(request.clientName().trim())
                 .address(request.address())
+                .contactName(request.contactName())
+                .contactPhone(request.contactPhone())
                 .technicianId(author.id())
                 .technicianName(author.fullName())
                 .status(MinutaStatus.BORRADOR)
@@ -55,8 +57,13 @@ public class MinutaService {
     }
 
     /**
-     * Actualiza el contenido de una minuta. Cualquier técnico o supervisor puede
-     * editarla (incluso si la creó otro), salvo que ya esté VALIDADA (bloqueada).
+     * Actualiza una minuta. Cualquier técnico o supervisor puede editarla
+     * (incluso si la creó otro), salvo que ya esté VALIDADA (bloqueada).
+     *
+     * <p>Es una actualización parcial: sólo se sobrescriben los campos que
+     * llegan con valor en el request (no nulos). Así, por ejemplo, la pantalla
+     * de edición de contacto puede enviar sólo clientName/address/contacto
+     * sin borrar el resumen/topología/equipo ya generados por el chat.</p>
      */
     @Transactional
     public Minuta update(Long id, MinutaRequest request, AuthenticatedUser editor) {
@@ -67,10 +74,24 @@ public class MinutaService {
             );
         }
         minuta.setClientName(request.clientName().trim());
-        minuta.setAddress(request.address());
-        minuta.setSummary(request.summary());
-        minuta.setTopologyJson(request.topologyJson());
-        minuta.setContentJson(request.contentJson());
+        if (request.address() != null) {
+            minuta.setAddress(request.address());
+        }
+        if (request.contactName() != null) {
+            minuta.setContactName(request.contactName());
+        }
+        if (request.contactPhone() != null) {
+            minuta.setContactPhone(request.contactPhone());
+        }
+        if (request.summary() != null) {
+            minuta.setSummary(request.summary());
+        }
+        if (request.topologyJson() != null) {
+            minuta.setTopologyJson(request.topologyJson());
+        }
+        if (request.contentJson() != null) {
+            minuta.setContentJson(request.contentJson());
+        }
         if (request.evaluationId() != null) {
             minuta.setEvaluationId(request.evaluationId());
         }

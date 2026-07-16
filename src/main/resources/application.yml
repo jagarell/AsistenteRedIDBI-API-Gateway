@@ -21,7 +21,26 @@ spring:
   application:
     name: idbi-api-gateway
 
+  # SMTP para recuperación de contraseña y envío de propuestas. Sin valores
+  # por defecto para host/usuario/password: deben venir del gestor de
+  # secretos corporativo. Si app.mail.enabled=false (por defecto), nunca se
+  # intenta conectar — ver EmailService.
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 app:
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from: ${MAIL_FROM:no-reply@idbi.pe}
   # Secreto de firma JWT (HS256). Debe tener al menos 32 bytes y provenir del
   # vault/variable de entorno JWT_SECRET. Sin valor por defecto a propósito.
   jwt:

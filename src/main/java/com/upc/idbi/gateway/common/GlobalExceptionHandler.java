@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.common;
 
+import com.upc.idbi.gateway.email.EmailDeliveryException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
@@ -13,6 +14,17 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleIllegalArgument(
             IllegalArgumentException exception
+    ) {
+        return Map.of(
+                "message",
+                exception.getMessage()
+        );
+    }
+
+    @ExceptionHandler(EmailDeliveryException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    public Map<String, String> handleEmailDelivery(
+            EmailDeliveryException exception
     ) {
         return Map.of(
                 "message",

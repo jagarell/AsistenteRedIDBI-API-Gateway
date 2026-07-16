@@ -204,12 +204,44 @@ public class PdfService {
             return font.getStringWidth(sanitize(text)) / 1000f * fontSize;
         }
 
-        /** PDFBox con fuentes estándar (WinAnsi) no soporta todo Unicode (p. ej. emojis, ⚠, →). */
+        /**
+         * Las fuentes estándar de PDFBox usan WinAnsiEncoding (~= Windows-1252):
+         * cubre ASCII, Latin-1 (incluye tildes/ñ) y además comillas tipográficas,
+         * guiones largos, viñeta y elipsis — por eso se preservan explícitamente
+         * en vez de sustituirlos por '?'. Símbolos fuera de ese repertorio (p.
+         * ej. emojis, ⚠, →) se mapean a un equivalente ASCII o se sustituyen.
+         */
         private String sanitize(String text) {
-            return text
+            String normalized = text
                     .replace("→", "->")
-                    .replace("⚠", "!")
-                    .replaceAll("[^\\x00-\\x7F\\u00C0-\\u00FF]", "?");
+                    .replace("⚠", "!");
+
+            StringBuilder result = new StringBuilder(normalized.length());
+            for (int i = 0; i < normalized.length(); i++) {
+                char c = normalized.charAt(i);
+                if (isWinAnsiRenderable(c)) {
+                    result.append(c);
+                } else {
+                    result.append('?');
+                }
+            }
+            return result.toString();
+        }
+
+        private boolean isWinAnsiRenderable(char c) {
+            if (c <= 0x7F || (c >= 0x00A0 && c <= 0x00FF)) {
+                return true;
+            }
+            return switch (c) {
+                case '‘', '’', '‚', '“', '”', '„', // comillas
+                        '–', '—', // – —
+                        '•', // •
+                        '…', // …
+                        '€', // €
+                        '™' // ™
+                        -> true;
+                default -> false;
+            };
         }
     }
 }
