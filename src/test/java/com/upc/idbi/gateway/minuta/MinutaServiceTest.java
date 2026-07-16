@@ -29,7 +29,7 @@ class MinutaServiceTest {
             new AuthenticatedUser(9L, "supervisor@idbi.pe", "Supervisor", Role.SUPERVISOR);
 
     private MinutaRequest request() {
-        return new MinutaRequest(null, "Cliente Demo", "Av. 1", "resumen", "{}", "{}");
+        return new MinutaRequest(null, "Cliente Demo", "Av. 1", "Contacto Demo", "999999999", "resumen", "{}", "{}");
     }
 
     @Test
