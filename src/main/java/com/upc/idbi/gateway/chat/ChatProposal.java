@@ -6,6 +6,8 @@ public record ChatProposal(
         String summary,
         List<String> recommendations,
         List<EquipmentRecommendation> equipment,
-        String topologyText
+        String topologyText,
+        Topology topology,
+        Integer score
 ) {
 }

@@ -7,7 +7,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/evaluations/{evaluationId}/proposal")
-@CrossOrigin(origins = "*")
 public class ProposalController {
 
     @GetMapping

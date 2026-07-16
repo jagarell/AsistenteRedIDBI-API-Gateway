@@ -9,7 +9,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/evaluations")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class EvaluationController {
 
     private final EvaluationRepository repository;

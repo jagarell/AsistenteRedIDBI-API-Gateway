@@ -1,6 +1,7 @@
 package com.upc.idbi.gateway.chat;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -10,10 +11,10 @@ import java.util.HashMap;
 @RequiredArgsConstructor
 public class ChatService {
 
-    private static final String FAST_API_URL =
-            "http://localhost:8000";
-
     private final RestTemplate restTemplate;
+
+    @Value("${app.fastapi.base-url}")
+    private String fastApiBaseUrl;
 
     public ChatResponse startChat(Long evaluationId) {
         ChatStartRequest request = new ChatStartRequest(
@@ -21,7 +22,7 @@ public class ChatService {
         );
 
         return restTemplate.postForObject(
-                FAST_API_URL + "/chat/start",
+                fastApiBaseUrl + "/chat/start",
                 request,
                 ChatResponse.class
         );
@@ -42,7 +43,7 @@ public class ChatService {
                 );
 
         return restTemplate.postForObject(
-                FAST_API_URL + "/chat/answer",
+                fastApiBaseUrl + "/chat/answer",
                 normalizedRequest,
                 ChatResponse.class
         );

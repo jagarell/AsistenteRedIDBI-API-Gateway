@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.auth;
 
+import com.upc.idbi.gateway.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -8,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Locale;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -16,6 +16,8 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final RecoveryCodeNotifier recoveryCodeNotifier;
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
@@ -47,7 +49,7 @@ public class AuthService {
                                 : request.city().trim()
                 )
                 .password(passwordEncoder.encode(request.password()))
-                .role("TECNICO")
+                .role(Role.fromString(request.role()))
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -60,7 +62,7 @@ public class AuthService {
                 savedUser.getPhone(),
                 savedUser.getCompany(),
                 savedUser.getCity(),
-                savedUser.getRole(),
+                savedUser.getRole().name(),
                 "Usuario registrado correctamente"
         );
     }
@@ -89,8 +91,8 @@ public class AuthService {
             );
         }
 
-        String accessToken = UUID.randomUUID().toString();
-        int expiresInMinutes = 60;
+        String accessToken = jwtService.generateToken(user);
+        int expiresInMinutes = (int) jwtService.getExpirationMinutes();
 
         return new LoginResponse(
                 accessToken,
@@ -98,7 +100,7 @@ public class AuthService {
                 user.getId(),
                 user.getFullName(),
                 user.getEmail(),
-                user.getRole()
+                user.getRole().name()
         );
     }
 
@@ -110,14 +112,20 @@ public class AuthService {
                 .trim()
                 .toLowerCase(Locale.ROOT);
 
-        UserEntity user = userRepository
-                .findByEmailIgnoreCase(normalizedEmail)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "No existe una cuenta registrada con ese correo"
-                ));
+        int expirationMinutes = 10;
+
+        // No revelamos si el correo existe (evita enumeración de usuarios):
+        // siempre respondemos igual y sólo enviamos el código si hay cuenta.
+        var maybeUser = userRepository.findByEmailIgnoreCase(normalizedEmail);
+        if (maybeUser.isEmpty()) {
+            return new ForgotPasswordResponse(
+                    "Si el correo existe, enviaremos un código de recuperación",
+                    expirationMinutes
+            );
+        }
+        UserEntity user = maybeUser.get();
 
         String recoveryCode = generateRecoveryCode();
-        int expirationMinutes = 10;
 
         user.setResetCode(recoveryCode);
         user.setResetCodeExpiresAt(
@@ -126,9 +134,13 @@ public class AuthService {
 
         userRepository.save(user);
 
+        // El código NUNCA se devuelve en la respuesta HTTP ni se registra en
+        // logs (política de organización: no exponer códigos de un solo uso).
+        // Se entrega por un canal seguro (correo corporativo) vía el notifier.
+        recoveryCodeNotifier.send(user.getEmail(), recoveryCode, expirationMinutes);
+
         return new ForgotPasswordResponse(
-                "Código de recuperación generado correctamente",
-                recoveryCode,
+                "Si el correo existe, enviaremos un código de recuperación",
                 expirationMinutes
         );
     }

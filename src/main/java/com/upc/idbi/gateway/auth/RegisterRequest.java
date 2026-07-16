@@ -21,6 +21,10 @@ public record RegisterRequest(
 
         String city,
 
+        // Opcional: "TECNICO" (por defecto) o "SUPERVISOR". Valores desconocidos
+        // se tratan como TECNICO (ver Role.fromString).
+        String role,
+
         @NotBlank(message = "La contraseña es obligatoria")
         @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres")
         String password,
