@@ -56,4 +56,7 @@ public class UserEntity {
 
     @Column(name = "reset_code_expires_at")
     private LocalDateTime resetCodeExpiresAt;
+
+    @Column(name = "fcm_token", length = 255)
+    private String fcmToken;
 }
