@@ -16,5 +16,6 @@ public class AnalysisResponse {
     private Integer attentionRequired;
     private List<AnalysisItem> results;
     private String summary;
+    private List<String> asIsFindings;
     private List<String> recommendations;
 }
