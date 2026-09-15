@@ -1,0 +1,43 @@
+# Solo para probar localmente que gateway + fastapi + postgres arrancan
+# juntos en contenedores antes de desplegar en Railway (Railway no usa este
+# archivo — ahí cada servicio se configura por separado desde su propio
+# Dockerfile). Requiere el .env de este repo con JWT_SECRET/DB_PASSWORD reales.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: asistente_red_idbi
+      POSTGRES_USER: idbi_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - idbi_postgres_data:/var/lib/postgresql/data
+
+  fastapi:
+    build: ../idbi-fastapi
+    env_file:
+      - ../idbi-fastapi/.env
+    ports:
+      - "8000:8000"
+
+  gateway:
+    build: .
+    depends_on:
+      - postgres
+      - fastapi
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/asistente_red_idbi
+      DB_USERNAME: idbi_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      FASTAPI_BASE_URL: http://fastapi:8000
+      CORS_ALLOWED_ORIGINS: "*"
+    ports:
+      - "8080:8080"
+    volumes:
+      - idbi_uploads_data:/app/uploads
+
+volumes:
+  idbi_postgres_data:
+  idbi_uploads_data:

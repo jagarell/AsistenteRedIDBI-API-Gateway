@@ -1,0 +1,9 @@
+target/
+uploads/
+.env
+.env.*
+!.env.example
+.git/
+.idea/
+*.iml
+HELP.md

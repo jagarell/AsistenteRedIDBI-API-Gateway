@@ -21,6 +21,7 @@ hs_err_pid*
 application-local.properties
 application-local.yml
 application-local.yaml
+firebase-service-account.json
 
 # IntelliJ IDEA
 .idea/
@@ -43,3 +44,7 @@ out/
 # Logs
 *.log
 logs/
+
+# Evidencia subida en local (solo dev — en producción va a un volumen o
+# bucket aparte, nunca al repo)
+uploads/
