@@ -57,9 +57,18 @@ public class PdfService {
                 writer.blank();
             }
 
+            List<String> asIsFindings = request.asIsFindings();
+            if (asIsFindings != null && !asIsFindings.isEmpty()) {
+                writer.heading("Diagnóstico actual (AS-IS)");
+                for (String finding : asIsFindings) {
+                    writer.bullet(finding);
+                }
+                writer.blank();
+            }
+
             List<String> recommendations = request.recommendations();
             if (recommendations != null && !recommendations.isEmpty()) {
-                writer.heading("Recomendaciones");
+                writer.heading("Propuesta recomendada (TO-BE)");
                 for (String recommendation : recommendations) {
                     writer.bullet(recommendation);
                 }
@@ -72,7 +81,9 @@ public class PdfService {
                 for (ProposalPdfRequest.EquipmentLineDto item : equipment) {
                     String desc = item.description() == null || item.description().isBlank()
                             ? "" : " — " + item.description();
-                    writer.bullet(item.name() + desc + " (x" + item.quantity() + ")");
+                    String price = item.unitPrice() == null
+                            ? "" : String.format(" — $%.0f c/u", item.unitPrice());
+                    writer.bullet(item.name() + desc + price + " (x" + item.quantity() + ")");
                 }
                 writer.blank();
             }

@@ -13,6 +13,7 @@ public record ProposalPdfRequest(
         String technicianName,
         Integer score,
         String summary,
+        List<String> asIsFindings,
         List<String> recommendations,
         List<EquipmentLineDto> equipment,
         String topologyText
@@ -21,7 +22,10 @@ public record ProposalPdfRequest(
     public record EquipmentLineDto(
             String name,
             String description,
-            int quantity
+            int quantity,
+            // Pendiente de catálogo real de precios de IDBI — null hasta
+            // entonces (mismo patrón que OPENAI_API_KEY/RUC).
+            Double unitPrice
     ) {
     }
 }

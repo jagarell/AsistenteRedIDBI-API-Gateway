@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.chat;
 
+import java.util.List;
 import java.util.Map;
 
 public record ChatResponse(
@@ -7,6 +8,8 @@ public record ChatResponse(
         Integer currentStep,
         String currentQuestionKey,
         String currentQuestion,
+        String currentInputType,
+        List<String> currentOptions,
         Integer answeredQuestions,
         Integer totalQuestions,
         Integer progressPercent,

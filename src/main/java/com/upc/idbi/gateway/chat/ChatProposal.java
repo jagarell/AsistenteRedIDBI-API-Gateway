@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ChatProposal(
         String summary,
+        List<String> asIsFindings,
         List<String> recommendations,
         List<EquipmentRecommendation> equipment,
         String topologyText,
