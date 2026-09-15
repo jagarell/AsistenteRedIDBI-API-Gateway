@@ -44,6 +44,10 @@ public class Minuta {
     @Column(name = "contact_phone", length = 30)
     private String contactPhone;
 
+    /** Notas adicionales libres del técnico (pantalla "Editar Propuesta"). */
+    @Column(columnDefinition = "TEXT")
+    private String notes;
+
     /** Técnico que creó la minuta. */
     @Column(name = "technician_id")
     private Long technicianId;

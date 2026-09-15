@@ -44,6 +44,7 @@ public class MinutaService {
                 .address(request.address())
                 .contactName(request.contactName())
                 .contactPhone(request.contactPhone())
+                .notes(request.notes())
                 .technicianId(author.id())
                 .technicianName(author.fullName())
                 .status(MinutaStatus.BORRADOR)
@@ -82,6 +83,9 @@ public class MinutaService {
         }
         if (request.contactPhone() != null) {
             minuta.setContactPhone(request.contactPhone());
+        }
+        if (request.notes() != null) {
+            minuta.setNotes(request.notes());
         }
         if (request.summary() != null) {
             minuta.setSummary(request.summary());

@@ -19,6 +19,8 @@ public record MinutaRequest(
 
         String contactPhone,
 
+        String notes,
+
         String summary,
 
         String topologyJson,
