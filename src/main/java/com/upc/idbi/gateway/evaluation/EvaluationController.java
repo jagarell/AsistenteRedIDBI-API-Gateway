@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.evaluation;
 
+import com.upc.idbi.gateway.validation.RucValidationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,6 +13,7 @@ import java.util.List;
 public class EvaluationController {
 
     private final EvaluationRepository repository;
+    private final RucValidationService rucValidationService;
 
     @GetMapping
     public List<Evaluation> getAll() {
@@ -25,6 +27,13 @@ public class EvaluationController {
 
     @PostMapping
     public Evaluation createEvaluation(@RequestBody(required = false) Evaluation body) {
+        // Solo se valida el formato cuando el cliente manda un nombre real —
+        // el placeholder "Nueva Evaluación" (evaluación recién creada, antes
+        // de que el chat pregunte el nombre del local) no pasa por acá.
+        if (body != null && body.getRestaurantName() != null) {
+            validateBusinessNameFormat(body.getRestaurantName());
+        }
+
         Evaluation evaluation = Evaluation.builder()
                 .restaurantName(body != null && body.getRestaurantName() != null ? body.getRestaurantName() : "Nueva Evaluación")
                 .location(body != null && body.getLocation() != null ? body.getLocation() : "Lima · Perú")
@@ -55,6 +64,8 @@ public class EvaluationController {
             @PathVariable Long id,
             @RequestBody Evaluation body
     ) {
+        validateBusinessNameFormat(body.getRestaurantName());
+
         Evaluation evaluation = repository.findById(id).orElseThrow();
 
         evaluation.setRestaurantName(body.getRestaurantName());
@@ -73,6 +84,13 @@ public class EvaluationController {
     @DeleteMapping("/{id}")
     public void deleteEvaluation(@PathVariable Long id) {
         repository.deleteById(id);
+    }
+
+    private void validateBusinessNameFormat(String restaurantName) {
+        var format = rucValidationService.hasValidFormat(restaurantName);
+        if (!format.valid()) {
+            throw new IllegalArgumentException(format.reason());
+        }
     }
 
 }
