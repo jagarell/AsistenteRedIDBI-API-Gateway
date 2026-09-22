@@ -26,26 +26,16 @@ spring:
   application:
     name: idbi-api-gateway
 
-  # SMTP para recuperación de contraseña y envío de propuestas. Sin valores
-  # por defecto para host/usuario/password: deben venir del gestor de
-  # secretos corporativo. Si app.mail.enabled=false (por defecto), nunca se
-  # intenta conectar — ver EmailService.
-  mail:
-    host: ${MAIL_HOST:}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-
 app:
+  # Correo real (recuperación de contraseña, envío de propuestas) vía la API
+  # HTTPS de Resend — no SMTP, porque el hosting (Railway Hobby) bloquea el
+  # puerto SMTP saliente. Sin valor por defecto para la API key: debe venir
+  # del gestor de secretos corporativo. Si enabled=false (por defecto), nunca
+  # se llama a Resend — ver EmailService.
   mail:
     enabled: ${MAIL_ENABLED:false}
-    from: ${MAIL_FROM:no-reply@idbi.pe}
+    resend-api-key: ${RESEND_API_KEY:}
+    from: ${MAIL_FROM:onboarding@resend.dev}
   # Secreto de firma JWT (HS256). Debe tener al menos 32 bytes y provenir del
   # vault/variable de entorno JWT_SECRET. Sin valor por defecto a propósito.
   jwt:
@@ -80,11 +70,3 @@ management:
     web:
       exposure:
         include: health,info
-  health:
-    # El indicador de correo de Actuator intenta conectarse por SMTP para
-    # el healthcheck, sin importar app.mail.enabled — con MAIL_ENABLED=false
-    # (el default) eso marca /actuator/health como DOWN aunque el gateway
-    # esté perfectamente operativo, y un hosting (Railway, etc.) que use ese
-    # endpoint como healthcheck reiniciaría el servicio en bucle sin motivo.
-    mail:
-      enabled: false

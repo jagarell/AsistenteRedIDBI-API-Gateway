@@ -83,12 +83,6 @@
             <version>2.0.31</version>
         </dependency>
 
-        <!-- Envío de correo (recuperación de contraseña, propuesta técnica) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-
         <!-- Firebase Admin SDK (envío de notificaciones push vía FCM) -->
         <dependency>
             <groupId>com.google.firebase</groupId>
