@@ -10,6 +10,7 @@ public record ChatResponse(
         String currentQuestion,
         String currentInputType,
         List<String> currentOptions,
+        String currentUnit,
         Integer answeredQuestions,
         Integer totalQuestions,
         Integer progressPercent,
