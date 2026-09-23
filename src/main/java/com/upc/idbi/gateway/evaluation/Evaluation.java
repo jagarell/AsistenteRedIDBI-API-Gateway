@@ -21,6 +21,11 @@ public class Evaluation {
     private String restaurantName;
     private String location;
     private String address;
+
+    /** Tipo de establecimiento (Restaurante/Cafetería/Bar/Comida rápida/Otro),
+     * respondido en el chat técnico — se sincroniza al completar el chat, ver
+     * ChatService.persistAnswers. */
+    private String establishmentType;
     private String contactName;
     private String contactEmail;
     private String phone;

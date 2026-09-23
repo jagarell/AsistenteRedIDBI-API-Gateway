@@ -9,6 +9,7 @@ public record MinutaDto(
         Long evaluationId,
         String establishmentName,
         String establishmentAddress,
+        String establishmentType,
         List<ChatAnswerDto> conversationResponses,
         List<EvidenceAreaItemDto> areas,
         List<EvidenceEquipmentItemDto> equipment,

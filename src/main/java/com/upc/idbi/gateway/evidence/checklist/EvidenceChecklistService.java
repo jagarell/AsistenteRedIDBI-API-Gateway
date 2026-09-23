@@ -200,6 +200,7 @@ public class EvidenceChecklistService {
                 evaluationId,
                 evaluation.getRestaurantName(),
                 evaluation.getAddress(),
+                evaluation.getEstablishmentType(),
                 conversation,
                 areas,
                 equipment,
@@ -320,7 +321,8 @@ public class EvidenceChecklistService {
                 evidence.getId(),
                 storageService.urlFor(evidence.getEvaluationId(), evidence.getStoredFileName()),
                 evidence.getComment(),
-                evidence.getUploadedAt()
+                evidence.getUploadedAt(),
+                evidence.getAnalysisResult()
         );
     }
 

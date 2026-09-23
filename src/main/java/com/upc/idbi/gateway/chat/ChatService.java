@@ -65,8 +65,12 @@ public class ChatService {
     /** Guarda las respuestas crudas del chat en la evaluación al completarse,
      * para que /analysis y el sembrado del checklist de evidencias puedan
      * funcionar a partir del evaluationId solo (sin que el cliente las
-     * reenvíe). No es crítico para la respuesta del chat en sí: si falla, se
-     * registra y se continúa (el cliente igual recibió su ChatResponse). */
+     * reenvíe). También sincroniza el nombre/dirección/tipo reales que el
+     * técnico respondió en el chat hacia la evaluación — sin esto, esos
+     * campos se quedaban para siempre con el placeholder puesto al crear la
+     * evaluación ("Nueva Evaluación"), ya que nada más los actualiza. No es
+     * crítico para la respuesta del chat en sí: si falla, se registra y se
+     * continúa (el cliente igual recibió su ChatResponse). */
     private void persistAnswers(Long evaluationId, java.util.Map<String, String> answers) {
         try {
             Evaluation evaluation = evaluationRepository.findById(evaluationId).orElse(null);
@@ -74,6 +78,20 @@ public class ChatService {
                 return;
             }
             evaluation.setChatAnswersJson(objectMapper.writeValueAsString(answers));
+
+            String establishmentName = answers.get("establishment_name");
+            if (establishmentName != null && !establishmentName.isBlank()) {
+                evaluation.setRestaurantName(establishmentName.trim());
+            }
+            String address = answers.get("address");
+            if (address != null && !address.isBlank()) {
+                evaluation.setAddress(address.trim());
+            }
+            String establishmentType = answers.get("establishment_type");
+            if (establishmentType != null && !establishmentType.isBlank()) {
+                evaluation.setEstablishmentType(establishmentType.trim());
+            }
+
             evaluationRepository.save(evaluation);
         } catch (Exception ex) {
             log.warn("No se pudieron persistir las respuestas del chat para la evaluación {}", evaluationId, ex);
