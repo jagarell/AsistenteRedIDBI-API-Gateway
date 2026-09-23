@@ -29,8 +29,9 @@ import java.util.Map;
  * app.chat.checklist.build_evidence_checklist en idbi-fastapi) y editable en
  * Fase A (selectionLocked=false); al bloquear (Fase B) cada ítem necesita al
  * menos una foto antes de habilitar el análisis IA. Un ítem sembrado que no
- * aplica en el local real (ej. "Rack / Router" si no existe) también se
- * puede quitar en Fase B, pero solo mientras siga sin fotos — ver
+ * aplica en el local real (ej. una zona de wifi_zones que al final no
+ * necesitaba cobertura) también se puede quitar en Fase B, pero solo
+ * mientras siga sin fotos — ver
  * ensureAreaDeletable/ensureEquipmentDeletable.
  */
 @Slf4j
@@ -365,8 +366,8 @@ public class EvidenceChecklistService {
      * En Fase A (sin bloquear) siempre se puede quitar. Ya bloqueada (Fase
      * B), solo si el ítem sigue sin ninguna foto — sirve para descartar
      * ítems sembrados automáticamente que no aplican en el local real (ej.
-     * "Rack / Router" o una zona del chat que finalmente no tiene equipo),
-     * sin arriesgar borrar evidencia ya capturada.
+     * una zona del chat que finalmente no tiene equipo), sin arriesgar
+     * borrar evidencia ya capturada.
      */
     private void ensureAreaDeletable(Long evaluationId, Long areaId) {
         Evaluation evaluation = requireEvaluation(evaluationId);
