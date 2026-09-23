@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.common;
 
+import com.upc.idbi.gateway.auth.InvalidRefreshTokenException;
 import com.upc.idbi.gateway.email.EmailDeliveryException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,20 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleIllegalArgument(
             IllegalArgumentException exception
+    ) {
+        return Map.of(
+                "message",
+                exception.getMessage()
+        );
+    }
+
+    /** Refresh token inválido/expirado — mismo status (401) y misma forma de
+     *  JSON que el authenticationEntryPoint de SecurityConfig, para que el
+     *  Android Authenticator lo trate igual que cualquier otro 401. */
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public Map<String, String> handleInvalidRefreshToken(
+            InvalidRefreshTokenException exception
     ) {
         return Map.of(
                 "message",
