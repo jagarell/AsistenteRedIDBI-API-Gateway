@@ -1,6 +1,7 @@
 package com.upc.idbi.gateway.config;
 
 import com.upc.idbi.gateway.security.JwtAuthFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -54,8 +55,29 @@ public class SecurityConfig {
                         ).permitAll()
                         .anyRequest().authenticated()
                 )
+                // Sin esto, Spring Security devuelve 403 tanto para "no autenticado"
+                // (sin token / token inválido o expirado) como para "autenticado pero
+                // sin el rol requerido" (ej. @PreAuthorize de MinutaController), y el
+                // cliente no puede distinguir cuándo debe cerrar sesión sola. Con el
+                // entry point explícito: 401 = no autenticado, 403 = autenticado pero
+                // sin permiso — el cliente Android solo dispara logout automático en 401.
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, authException) ->
+                                writeJsonError(response, HttpServletResponse.SC_UNAUTHORIZED,
+                                        "No autenticado. Tu sesión expiró o el token no es válido."))
+                        .accessDeniedHandler((request, response, accessDeniedException) ->
+                                writeJsonError(response, HttpServletResponse.SC_FORBIDDEN,
+                                        "No tienes permisos para realizar esta acción."))
+                )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    private static void writeJsonError(HttpServletResponse response, int status, String message) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write("{\"message\":\"" + message + "\"}");
     }
 
     @Bean
