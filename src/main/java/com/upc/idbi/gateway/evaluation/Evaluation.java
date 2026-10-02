@@ -45,6 +45,10 @@ public class Evaluation {
     @Column(columnDefinition = "TEXT")
     private String chatAnswersJson;
 
+    /** Mapa de red editable (JSON: nodos, enlaces, textos, imágenes) — ver MapController. */
+    @Column(columnDefinition = "TEXT")
+    private String mapJson;
+
     /** Checklist de evidencias (áreas/equipos a fotografiar): false = Fase A
      * (el técnico puede agregar/quitar ítems), true = Fase B (selección
      * congelada, cada ítem necesita al menos una foto). */

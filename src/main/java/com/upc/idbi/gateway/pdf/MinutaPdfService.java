@@ -66,10 +66,14 @@ public class MinutaPdfService {
                 .orElseThrow(() -> new IllegalArgumentException("No existe la evaluación " + evaluationId));
         String stateJson = stateOf(evaluation);
 
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("state", stateJson);
+        attachEditedMap(evaluation, evaluationId, request);
+
         @SuppressWarnings("unchecked")
         Map<String, Object> document = restTemplate.postForObject(
                 fastApiBaseUrl + "/chat/minuta-document",
-                Map.of("state", stateJson),
+                request,
                 Map.class
         );
         if (document == null) {
@@ -79,6 +83,30 @@ public class MinutaPdfService {
         List<Evidence> evidences =
                 evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId);
         return render(document, evidences, evaluationId);
+    }
+
+    /** Si el técnico editó el mapa, la minuta lo usa (con las fotos que colocó en él). */
+    @SuppressWarnings("unchecked")
+    private void attachEditedMap(Evaluation evaluation, Long evaluationId, Map<String, Object> request) {
+        if (evaluation.getMapJson() == null || evaluation.getMapJson().isBlank()) {
+            return;
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(evaluation.getMapJson(), new TypeReference<>() {});
+            request.put("map", map);
+            Map<String, String> images = new java.util.HashMap<>();
+            for (Map<String, Object> image : (List<Map<String, Object>>) map.getOrDefault("images", List.of())) {
+                String code = String.valueOf(image.get("evidenceCode"));
+                String scope = image.get("scope") == null ? "" : String.valueOf(image.get("scope"));
+                evidenceRepository.findByEvaluationIdAndEvidenceCodeAndChatScope(evaluationId, code, scope).stream()
+                        .findFirst()
+                        .ifPresent(e -> images.put(String.valueOf(image.get("id")), Base64.getEncoder()
+                                .encodeToString(storageService.read(evaluationId, e.getStoredFileName()))));
+            }
+            request.put("mapImages", images);
+        } catch (Exception e) {
+            log.warn("No se pudo usar el mapa editado de la evaluación {}", evaluationId, e);
+        }
     }
 
     /** Renderiza un documento ya armado (también lo usan los tests). */
