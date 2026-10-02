@@ -83,6 +83,18 @@
             <version>2.0.31</version>
         </dependency>
 
+        <!-- Minuta técnica: plantilla HTML (Thymeleaf standalone) -> PDF (OpenHTMLtoPDF sobre PDFBox) -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>1.0.10</version>
+        </dependency>
+        <dependency>
+            <groupId>org.thymeleaf</groupId>
+            <artifactId>thymeleaf</artifactId>
+            <version>3.1.2.RELEASE</version>
+        </dependency>
+
         <!-- Firebase Admin SDK (envío de notificaciones push vía FCM) -->
         <dependency>
             <groupId>com.google.firebase</groupId>

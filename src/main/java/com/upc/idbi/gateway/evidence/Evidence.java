@@ -67,4 +67,26 @@ public class Evidence {
 
     @Column(name = "equipment_item_id")
     private Long equipmentItemId;
+
+    // --- Evidencias subidas desde el chat (flujo de nodos, ver ChatService) ---
+
+    /** Código de la evidencia del flujo (E1..E9, EU-R...). Null en las fotos del checklist. */
+    @Column(name = "evidence_code", length = 12)
+    private String evidenceCode;
+
+    /** Alcance dentro del flujo (ej. "L_CAJAS:1", "L_IMPRESORAS:2"): distingue
+     * cada vuelta de un loop que repite la misma evidencia. */
+    @Column(name = "chat_scope", length = 200)
+    private String chatScope;
+
+    /** Área y equipo del subflujo de ubicación (EU-*), para agrupar por área. */
+    @Column(name = "chat_area", length = 100)
+    private String chatArea;
+
+    @Column(name = "chat_equipo", length = 200)
+    private String chatEquipo;
+
+    /** Lo que la IA leyó de la foto (JSON). Para E3 las credenciales ya vienen ocultas. */
+    @Column(name = "extracted_json", columnDefinition = "TEXT")
+    private String extractedJson;
 }

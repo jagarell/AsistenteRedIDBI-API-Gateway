@@ -34,6 +34,19 @@ public class EvidenceStorageService {
         }
     }
 
+    /** Guarda bytes ya procesados (ej. etiqueta del router con credenciales desenfocadas). */
+    public String saveBytes(Long evaluationId, byte[] content, String extension) {
+        try {
+            Path dir = Path.of(uploadsDir, "evidence", String.valueOf(evaluationId));
+            Files.createDirectories(dir);
+            String storedFileName = UUID.randomUUID() + extension;
+            Files.write(dir.resolve(storedFileName), content);
+            return storedFileName;
+        } catch (IOException e) {
+            throw new UncheckedIOException("No se pudo guardar el archivo de evidencia", e);
+        }
+    }
+
     public byte[] read(Long evaluationId, String storedFileName) {
         try {
             Path path = Path.of(uploadsDir, "evidence", String.valueOf(evaluationId), storedFileName);

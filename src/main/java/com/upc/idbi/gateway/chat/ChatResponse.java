@@ -17,12 +17,21 @@ public record ChatResponse(
         Boolean completed,
         Map<String, String> answers,
         ChatProposal proposal,
-        // Campos leídos por IA de la foto recién respondida (ej. Mbps/ping/ISP
-        // de una captura de speedtest) — solo viene poblado justo después de
-        // responder un nodo PHOTO.
-        Map<String, Object> lastPhotoResult,
-        // Aviso cuando lo leído en la foto no coincide con lo ya respondido
-        // antes en el chat (ej. ISP de la captura vs. proveedor tecleado).
-        String crossValidationWarning
+        // Estado opaco del flujo: la app lo devuelve en la siguiente respuesta.
+        String state,
+        // Nodo actual completo (tipo, opciones con value/label, bloque, etc.).
+        Map<String, Object> node,
+        // Si no es null, la respuesta fue inválida y el nodo no avanzó.
+        String validationError,
+        // Evidencia recién procesada: {code, scope, area, equipo, count, extracted}.
+        Map<String, Object> lastEvidence,
+        // Avisos de validación cruzada para mostrar en el chat.
+        List<String> crossChecks,
+        // Preguntas de confirmación tras una evidencia: [{key, text, options[]}].
+        List<Map<String, Object>> followUps,
+        // Solo E3: imágenes con las credenciales ya desenfocadas (base64). El
+        // gateway guarda estas en vez de las originales y se las devuelve a la
+        // app para que su miniatura tampoco muestre las credenciales.
+        List<String> processedImages
 ) {
 }

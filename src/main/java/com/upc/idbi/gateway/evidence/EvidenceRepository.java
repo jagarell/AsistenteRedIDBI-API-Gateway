@@ -12,6 +12,10 @@ public interface EvidenceRepository extends JpaRepository<Evidence, Long> {
 
     List<Evidence> findByEquipmentItemIdOrderByUploadedAtDesc(Long equipmentItemId);
 
+    List<Evidence> findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(Long evaluationId);
+
+    List<Evidence> findByEvaluationIdAndEvidenceCodeAndChatScope(Long evaluationId, String evidenceCode, String chatScope);
+
     boolean existsByAreaId(Long areaId);
 
     boolean existsByEquipmentItemId(Long equipmentItemId);

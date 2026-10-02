@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head>
+<meta charset="UTF-8"/>
+<title>Minuta técnica de red</title>
+<style>
+@page {
+  size: A4;
+  margin: 30mm 15mm 18mm 15mm;
+  @top-center { content: element(pageHeader); width: 180mm; vertical-align: bottom; }
+  @bottom-left { content: "Generada por el Asistente Virtual de Red"; font-family: 'Minuta'; font-size: 7pt; color: #8a8f9c; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); font-family: 'Minuta'; font-size: 8pt; color: #5b6070; }
+}
+* { box-sizing: border-box; }
+body { font-family: 'Minuta', 'Symbols', sans-serif; font-size: 8.2pt; line-height: 1.45; color: #1f2430; margin: 0; }
+.sym { font-family: 'Symbols', 'Minuta', sans-serif; }
+
+#pageHeader { position: running(pageHeader); width: 180mm; border-bottom: 0.6pt solid #d9dce5; padding-bottom: 1.5mm; }
+#pageHeader table { width: 100%; border-collapse: collapse; }
+#pageHeader td { border: none; padding: 0; vertical-align: bottom; }
+#pageHeader img { height: 9mm; }
+#pageHeader .meta { text-align: right; font-size: 7pt; color: #7a7f8e; padding-bottom: 1.5mm; }
+
+h1 { font-size: 17pt; color: #22286b; margin: 0; line-height: 1.15; }
+.subtitle { font-size: 12pt; font-weight: bold; color: #d63f86; margin: 1mm 0 2.5mm 0; }
+.intro { color: #6b7080; font-size: 8pt; margin: 0 0 3mm 0; }
+
+table.kpis { width: 100%; border-collapse: collapse; border: 0.6pt solid #d9dce5; background: #f6f7fb; margin-bottom: 6mm; }
+table.kpis td { width: 25%; text-align: center; padding: 1.5mm 1mm; border-left: 0.6pt solid #d9dce5; }
+table.kpis td:first-child { border-left: none; }
+table.kpis .n { font-size: 17pt; font-weight: bold; line-height: 1.1; }
+table.kpis .l { font-size: 7pt; color: #6b7080; }
+
+h2 { font-size: 11.5pt; color: #22286b; margin: 5mm 0 2mm 0; padding-bottom: 1mm; border-bottom: 0.8pt solid #d63f86; page-break-after: avoid; }
+h2 .num { color: #d63f86; }
+
+table.t { width: 100%; border-collapse: collapse; margin-bottom: 2mm; page-break-inside: auto; }
+table.t tr { page-break-inside: avoid; }
+table.t th { background: #22286b; color: #ffffff; text-align: left; font-size: 7.6pt; padding: 1.6mm 2mm; border: 0.6pt solid #22286b; }
+table.t td { border: 0.6pt solid #d9dce5; padding: 1.6mm 2mm; vertical-align: middle; }
+table.t td.k { background: #f3f5fa; font-weight: bold; color: #2b3040; width: 27%; }
+table.t td.src { font-style: italic; color: #7a7f8e; font-size: 7pt; width: 27%; }
+table.t tr.pending td { background: #fff6ec; }
+table.t tr.pending td.k { background: #fff6ec; }
+.pend { color: #b45309; }
+.pend b { color: #b45309; }
+.warn-text { color: #b45309; }
+.ok-text { color: #2e7d32; }
+
+table.t td.st { font-weight: bold; text-align: left; width: 18%; }
+table.rules td:first-child { width: 36%; }
+table.t td.st.ok { background: #e8f5e9; color: #2e7d32; }
+table.t td.st.warn { background: #fff3e6; color: #b45309; }
+
+.note { color: #7a7f8e; font-size: 7.5pt; font-style: italic; margin: 1mm 0 0 0; }
+ul.rec { margin: 0 0 2mm 0; padding-left: 5mm; }
+ul.rec li { margin-bottom: 1.6mm; }
+
+.map { text-align: center; margin: 2mm 0; }
+.map img { width: 100%; }
+
+table.exec { width: 100%; border-collapse: collapse; border: 0.6pt solid #d9dce5; }
+table.exec td { padding: 3mm; vertical-align: middle; }
+table.exec td.status { width: 25%; text-align: center; background: #fff3e6; border-right: 0.6pt solid #d9dce5; }
+table.exec td.status.ok { background: #e8f5e9; }
+table.exec .lbl { font-size: 7pt; font-weight: bold; color: #b45309; letter-spacing: 0.3pt; }
+table.exec .val { font-size: 13pt; font-weight: bold; color: #b45309; }
+table.exec td.status.ok .lbl, table.exec td.status.ok .val { color: #2e7d32; }
+
+.annex-title { page-break-before: always; }
+table.annex { width: 100%; border-collapse: collapse; }
+table.annex tr { page-break-inside: avoid; }
+table.annex td { border: 0.6pt solid #d9dce5; padding: 2mm; vertical-align: top; }
+table.annex td.img { width: 31%; text-align: center; vertical-align: middle; }
+table.annex td.img img { width: 100%; max-height: 52mm; margin-bottom: 1mm; }
+table.annex .ttl { color: #22286b; font-weight: bold; font-size: 9pt; margin-bottom: 1.5mm; }
+table.annex p { margin: 0 0 1.4mm 0; }
+
+.actions h3 { font-size: 8.4pt; margin: 2mm 0 1mm 0; color: #1f2430; }
+</style>
+</head>
+<body>
+
+<div id="pageHeader">
+  <table><tr>
+    <td><img th:src="${logo}" alt="ID Business Intelligence"/></td>
+    <td class="meta"><span th:text="'Minuta técnica · ' + ${doc.subtitle} + ' · ' + ${doc.date}">Minuta técnica</span></td>
+  </tr></table>
+</div>
+
+<h1 th:text="${doc.title}">MINUTA TÉCNICA DE RED</h1>
+<div class="subtitle" th:text="${doc.subtitle}">Local</div>
+<p class="intro" th:text="${doc.intro}">Intro</p>
+
+<table class="kpis"><tr>
+  <td><div class="n" style="color:#22286b" th:text="${doc.kpis.fields}">0</div><div class="l">campos de la plantilla</div></td>
+  <td><div class="n" style="color:#2e7d32" th:text="${doc.kpis.fromImages}">0</div><div class="l">salen de las imágenes</div></td>
+  <td><div class="n" style="color:#3b4252" th:text="${doc.kpis.fromChat}">0</div><div class="l">de las respuestas del técnico</div></td>
+  <td><div class="n" style="color:#b45309" th:text="${doc.kpis.pending}">0</div><div class="l">pendientes</div></td>
+</tr></table>
+
+<th:block th:each="sec : ${doc.sections}">
+
+  <!-- 7. Impresoras: tabla propia entre las secciones 6 y 8 -->
+  <th:block th:if="${sec.number == 8 and !#lists.isEmpty(doc.printers)}">
+    <h2><span class="num">7.</span> Impresoras</h2>
+    <table class="t">
+      <tr><th>Nombre</th><th>Ubicación</th><th>Modelo</th><th>IP</th><th>Red disponible</th></tr>
+      <tr th:each="p : ${doc.printers}">
+        <td class="k" th:text="${p.nombre}">Impresora</td>
+        <td th:text="${p.ubicacion}">Caja</td>
+        <td><span th:text="${p.modelo}">Modelo</span><span th:if="${p.modeloPending}" class="warn-text"> · modelo y SN no legibles en la foto: el asistente pediría otra toma.</span></td>
+        <td th:text="${p.ip}">IP</td>
+        <td th:class="${p.redOk} ? 'ok-text'" th:text="${p.red}">Red</td>
+      </tr>
+    </table>
+    <p class="note" th:text="${doc.printersSource}">Fuente</p>
+  </th:block>
+
+  <h2><span class="num" th:text="${sec.number} + '.'">1.</span> <span th:text="${sec.title}">Sección</span></h2>
+  <table class="t">
+    <tr><th>Campo</th><th>Valor</th><th>Fuente</th></tr>
+    <tr th:each="r : ${sec.rows}" th:class="${r.pending} ? 'pending'">
+      <td class="k" th:text="${r.label}">Campo</td>
+      <td th:if="${!r.pending}" th:text="${r.value}">Valor</td>
+      <td th:if="${r.pending}" class="pend"><b>Pendiente</b> · <span th:text="${r.pendingNote}">nota</span></td>
+      <td class="src" th:text="${r.source}">Fuente</td>
+    </tr>
+  </table>
+</th:block>
+
+<h2><span class="num">9.</span> Validación técnica automática</h2>
+<p class="note" style="margin-bottom:1.5mm">Reglas aplicadas por el sistema cruzando las evidencias. Los umbrales son valores de ejemplo y se configuran en el backend.</p>
+<table class="t rules">
+  <tr><th>Regla</th><th>Resultado</th><th>Estado</th></tr>
+  <tr th:each="r : ${doc.rules}">
+    <td th:text="${r.rule}">Regla</td>
+    <td th:text="${r.result}">Resultado</td>
+    <td th:class="'st ' + (${r.status == 'CUMPLE' or r.status == 'VERIFICADO' or r.status == 'APLICADO'} ? 'ok' : 'warn')">
+      <span class="sym" th:text="${r.status == 'CUMPLE' or r.status == 'VERIFICADO' or r.status == 'APLICADO'} ? '✓' : '⚠'">✓</span>
+      <span th:text="${r.status == 'CUMPLE'} ? 'Cumple' : (${r.status == 'VERIFICADO'} ? 'Verificado' : (${r.status == 'APLICADO'} ? 'Aplicado' : (${r.status == 'REVISAR'} ? 'Revisar' : (${r.status == 'INCOMPLETO'} ? 'Incompleto' : (${r.status == 'SIN_DATO'} ? 'Sin dato' : 'Observado')))))">Estado</span>
+    </td>
+  </tr>
+</table>
+
+<h2><span class="num">10.</span> Recomendaciones generadas</h2>
+<ul class="rec">
+  <li th:each="rec : ${doc.recommendations}" th:text="${rec}">Recomendación</li>
+</ul>
+
+<th:block th:if="${mapImage != null}">
+  <h2><span class="num">11.</span> Mapa de red</h2>
+  <div class="map"><img th:src="${mapImage}" alt="Mapa de red"/></div>
+  <p class="note" th:text="${doc.mapCaption}">Caption</p>
+</th:block>
+
+<h2><span class="num">12.</span> Resumen ejecutivo</h2>
+<table class="exec"><tr>
+  <td th:class="'status ' + (${doc.finalStatus == 'APTO'} ? 'ok' : '')">
+    <div class="lbl">ESTADO FINAL</div>
+    <div class="val" th:text="${doc.finalStatus}">OBSERVADO</div>
+  </td>
+  <td th:text="${doc.executiveSummary}">Resumen</td>
+</tr></table>
+
+<h2 class="annex-title"><span class="num">Anexo A.</span> Evidencias utilizadas</h2>
+<table class="annex">
+  <tr th:each="a, st : ${doc.annexA}">
+    <td class="img">
+      <img th:each="src : ${annexImages[st.index]}" th:src="${src}" alt="Evidencia"/>
+    </td>
+    <td>
+      <div class="ttl" th:text="${a.title}">Título</div>
+      <p th:each="line : ${a.lines}" th:text="${line}">Línea</p>
+    </td>
+  </tr>
+</table>
+
+<th:block th:if="${!#lists.isEmpty(doc.annexB)}">
+  <h2><span class="num">Anexo B.</span> Datos que el asistente pediría para completar la minuta</h2>
+  <table class="t">
+    <tr><th>Nodo</th><th>Pregunta</th><th>Tipo</th><th>Campo</th></tr>
+    <tr th:each="b : ${doc.annexB}">
+      <td th:text="${b.node}">N</td><td th:text="${b.question}">Pregunta</td>
+      <td th:text="${b.type}">TEXT</td><td th:text="${b.field}">Campo</td>
+    </tr>
+  </table>
+</th:block>
+
+<div class="actions">
+  <h2>Siguientes acciones</h2>
+  <th:block th:if="${!#lists.isEmpty(doc.actionsId)}">
+    <h3>Por parte de ID:</h3>
+    <ul class="rec"><li th:each="x : ${doc.actionsId}" th:text="${x}">Acción</li></ul>
+  </th:block>
+  <th:block th:if="${!#lists.isEmpty(doc.actionsClient)}">
+    <h3 th:text="'Por parte de ' + ${doc.subtitle} + ':'">Por parte del cliente:</h3>
+    <ul class="rec"><li th:each="x : ${doc.actionsClient}" th:text="${x}">Acción</li></ul>
+  </th:block>
+</div>
+
+</body>
+</html>
