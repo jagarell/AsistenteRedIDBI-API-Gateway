@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.chat;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.upc.idbi.gateway.evaluation.Evaluation;
 import com.upc.idbi.gateway.evaluation.EvaluationRepository;
@@ -8,8 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -46,12 +51,55 @@ public class ChatService {
                         request.answer(),
                         request.answers() == null
                                 ? new HashMap<>()
-                                : request.answers()
+                                : request.answers(),
+                        null
                 );
 
+        return callFastApiAndPersist(evaluationId, normalizedRequest);
+    }
+
+    /** Variante para nodos PHOTO (ej. captura de speedtest): convierte el
+     * archivo subido a base64 y lo manda al mismo endpoint /chat/answer de
+     * FastAPI (el motor distingue por el tipo del nodo actual, no hace
+     * falta una ruta nueva ahí) — mismo patrón de conversión que ya usa
+     * EvidencePhotoAnalysisService.analyze() para las fotos de equipos. */
+    public ChatResponse answerChatWithPhoto(
+            Long evaluationId,
+            MultipartFile file,
+            Integer currentStep,
+            String answersJson
+    ) {
+        Map<String, String> answers;
+        try {
+            answers = answersJson == null || answersJson.isBlank()
+                    ? new HashMap<>()
+                    : objectMapper.readValue(answersJson, new TypeReference<Map<String, String>>() {});
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("answersJson inválido", ex);
+        }
+
+        String photoBase64;
+        try {
+            photoBase64 = Base64.getEncoder().encodeToString(file.getBytes());
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("No se pudo leer el archivo subido", ex);
+        }
+
+        ChatAnswerRequest request = new ChatAnswerRequest(
+                String.valueOf(evaluationId),
+                currentStep,
+                "",
+                answers,
+                photoBase64
+        );
+
+        return callFastApiAndPersist(evaluationId, request);
+    }
+
+    private ChatResponse callFastApiAndPersist(Long evaluationId, ChatAnswerRequest request) {
         ChatResponse response = restTemplate.postForObject(
                 fastApiBaseUrl + "/chat/answer",
-                normalizedRequest,
+                request,
                 ChatResponse.class
         );
 
