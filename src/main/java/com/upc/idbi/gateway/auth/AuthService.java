@@ -52,7 +52,7 @@ public class AuthService {
                                 : request.city().trim()
                 )
                 .password(passwordEncoder.encode(request.password()))
-                .role(Role.fromString(request.role()))
+                .role(Role.TECNICO) // el rol SUPERVISOR solo se asigna por base de datos
                 .createdAt(LocalDateTime.now())
                 .build();
 

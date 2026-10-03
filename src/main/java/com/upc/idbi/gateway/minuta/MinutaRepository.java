@@ -11,4 +11,7 @@ public interface MinutaRepository extends JpaRepository<Minuta, Long> {
     List<Minuta> findByTechnicianIdOrderByCreatedAtDesc(Long technicianId);
 
     List<Minuta> findAllByOrderByCreatedAtDesc();
+
+    /** Borradores a los que todavía no se les avisó que están por vencer. */
+    List<Minuta> findByStatusAndExpiryReminderSentAtIsNull(MinutaStatus status);
 }

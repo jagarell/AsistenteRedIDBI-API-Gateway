@@ -86,4 +86,8 @@ public class Minuta {
 
     @Column(name = "validated_at")
     private LocalDateTime validatedAt;
+
+    /** Cuándo se avisó al técnico que el borrador estaba por vencer (una sola vez). */
+    @Column(name = "expiry_reminder_sent_at")
+    private LocalDateTime expiryReminderSentAt;
 }

@@ -50,6 +50,15 @@ app:
   # inicializa el SDK y el envío de push falla explícito. Ver FirebaseConfig.
   firebase:
     credentials-path: ${FIREBASE_CREDENTIALS_PATH:}
+    # Alternativa: el contenido del JSON en una variable de entorno (Railway).
+    credentials-json: ${FIREBASE_CREDENTIALS_JSON:}
+  # Avisos a los técnicos de borradores por vencer (push). Un borrador vence
+  # `draft-ttl-days` días después de crearse; se avisa una vez cuando faltan
+  # `warn-days-before` días o menos. La tarea corre todos los días a la hora del cron.
+  reminders:
+    draft-ttl-days: ${DRAFT_TTL_DAYS:7}
+    warn-days-before: ${DRAFT_WARN_DAYS_BEFORE:2}
+    cron: ${REMINDERS_CRON:0 0 9 * * *}
   # Orígenes permitidos por CORS (coma-separados). En producción, restringir.
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:*}

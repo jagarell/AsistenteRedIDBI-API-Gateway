@@ -8,7 +8,10 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 
 /**
@@ -23,22 +26,30 @@ public class FirebaseConfig {
     @Value("${app.firebase.credentials-path:}")
     private String credentialsPath;
 
+    /** Contenido del JSON de la cuenta de servicio (útil en Railway, donde no hay un archivo que montar). */
+    @Value("${app.firebase.credentials-json:}")
+    private String credentialsJson;
+
     @EventListener(ApplicationReadyEvent.class)
     public void initialize() {
-        if (credentialsPath == null || credentialsPath.isBlank()) {
+        boolean hasJson = credentialsJson != null && !credentialsJson.isBlank();
+        boolean hasPath = credentialsPath != null && !credentialsPath.isBlank();
+        if (!hasJson && !hasPath) {
             return;
         }
         if (!FirebaseApp.getApps().isEmpty()) {
             return;
         }
-        try (FileInputStream serviceAccount = new FileInputStream(credentialsPath)) {
+        try (InputStream serviceAccount = hasJson
+                ? new ByteArrayInputStream(credentialsJson.getBytes(StandardCharsets.UTF_8))
+                : new FileInputStream(credentialsPath)) {
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                     .build();
             FirebaseApp.initializeApp(options);
         } catch (IOException e) {
             throw new IllegalStateException(
-                    "No se pudo inicializar Firebase Admin SDK desde " + credentialsPath, e
+                    "No se pudo inicializar Firebase Admin SDK", e
             );
         }
     }

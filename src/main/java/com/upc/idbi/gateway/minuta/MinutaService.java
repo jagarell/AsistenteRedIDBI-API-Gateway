@@ -1,6 +1,7 @@
 package com.upc.idbi.gateway.minuta;
 
 import com.upc.idbi.gateway.minuta.dto.MinutaRequest;
+import com.upc.idbi.gateway.notification.MinutaNotifier;
 import com.upc.idbi.gateway.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,7 @@ import java.util.List;
 public class MinutaService {
 
     private final MinutaRepository repository;
+    private final MinutaNotifier notifier;
 
     /**
      * Lista minutas. Todas son visibles para técnicos y supervisores (incluidas
@@ -112,9 +114,15 @@ public class MinutaService {
                     "La minuta ya fue validada"
             );
         }
+        boolean wasCompleted = minuta.getStatus() == MinutaStatus.COMPLETA;
         minuta.setStatus(MinutaStatus.COMPLETA);
         minuta.setUpdatedAt(LocalDateTime.now());
-        return repository.save(minuta);
+        Minuta saved = repository.save(minuta);
+        if (!wasCompleted) {
+            // Un push que falla nunca debe impedir completar la minuta (ver trySend).
+            notifier.minutaCompleted(saved);
+        }
+        return saved;
     }
 
     /**

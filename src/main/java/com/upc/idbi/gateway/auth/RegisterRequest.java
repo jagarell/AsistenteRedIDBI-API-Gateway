@@ -21,8 +21,9 @@ public record RegisterRequest(
 
         String city,
 
-        // Opcional: "TECNICO" (por defecto) o "SUPERVISOR". Valores desconocidos
-        // se tratan como TECNICO (ver Role.fromString).
+        // Se ignora: toda cuenta que se registra desde la app es TECNICO. El rol
+        // SUPERVISOR se asigna directamente en la base de datos. El campo se
+        // conserva para no romper clientes que aún lo envían.
         String role,
 
         @NotBlank(message = "La contraseña es obligatoria")
