@@ -21,7 +21,7 @@ public class HistoryController {
             return repository.findByStatus(status);
         }
 
-        return repository.findByStatusNot(EvaluationStatus.ANULADA);
+        return repository.findActive();
     }
 
     @GetMapping("/{id}")

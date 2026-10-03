@@ -40,14 +40,24 @@ class EvaluationAnnulServiceTest {
 
         Evaluation result = service.annul(1L);
 
-        assertThat(result.getStatus()).isEqualTo(EvaluationStatus.ANULADA);
+        assertThat(result.getAnnulled()).isTrue();
+        assertThat(result.getStatus()).isEqualTo(EvaluationStatus.BORRADOR);
         verify(minutas).deleteByEvaluationIdAndStatus(1L, MinutaStatus.BORRADOR);
+    }
+
+    @Test
+    void noSeAnulaDosVeces() {
+        Evaluation yaAnulada = evaluation(3L, EvaluationStatus.BORRADOR);
+        yaAnulada.setAnnulled(true);
+        when(evaluations.findById(3L)).thenReturn(Optional.of(yaAnulada));
+
+        assertThatThrownBy(() -> service.annul(3L)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void noSeAnulaLoQueYaNoEsBorrador() {
         for (EvaluationStatus status : new EvaluationStatus[]{
-                EvaluationStatus.COMPLETADO, EvaluationStatus.ENVIADO, EvaluationStatus.EN_ANALISIS, EvaluationStatus.ANULADA}) {
+                EvaluationStatus.COMPLETADO, EvaluationStatus.ENVIADO, EvaluationStatus.EN_ANALISIS}) {
             when(evaluations.findById(2L)).thenReturn(Optional.of(evaluation(2L, status)));
             assertThatThrownBy(() -> service.annul(2L))
                     .isInstanceOf(IllegalArgumentException.class)

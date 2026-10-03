@@ -15,17 +15,17 @@ public class EvaluationAnnulService {
     private final MinutaRepository minutas;
 
     /**
-     * Marca la evaluación como ANULADA y descarta los borradores de minuta que salieron de ella
+     * Marca la evaluación como anulada y descarta los borradores de minuta que salieron de ella
      * (una minuta COMPLETA o VALIDADA nunca se toca).
      */
     @Transactional
     public Evaluation annul(Long id) {
         Evaluation evaluation = evaluations.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No existe la evaluación con id " + id));
-        if (evaluation.getStatus() != EvaluationStatus.BORRADOR) {
+        if (evaluation.getStatus() != EvaluationStatus.BORRADOR || Boolean.TRUE.equals(evaluation.getAnnulled())) {
             throw new IllegalArgumentException("Solo se pueden anular las evaluaciones en borrador");
         }
-        evaluation.setStatus(EvaluationStatus.ANULADA);
+        evaluation.setAnnulled(true);
         minutas.deleteByEvaluationIdAndStatus(id, MinutaStatus.BORRADOR);
         return evaluations.save(evaluation);
     }

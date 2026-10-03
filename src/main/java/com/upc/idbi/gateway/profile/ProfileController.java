@@ -49,7 +49,7 @@ public class ProfileController {
                 user.getCompany(),
                 user.getCity(),
                 user.getRole().name(),
-                (int) evaluationRepository.countByStatusNot(EvaluationStatus.ANULADA),
+                (int) evaluationRepository.countActive(),
                 myMinutas.size(),
                 (int) sent
         );

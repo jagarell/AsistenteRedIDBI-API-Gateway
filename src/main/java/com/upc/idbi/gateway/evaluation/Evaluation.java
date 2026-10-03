@@ -54,4 +54,12 @@ public class Evaluation {
      * congelada, cada ítem necesita al menos una foto). */
     @Builder.Default
     private Boolean evidenceSelectionLocked = false;
+
+    /**
+     * Anulada a mano por el técnico (solo desde BORRADOR). Es una marca aparte del estado a
+     * propósito: la base ya tiene una restricción con los valores de EvaluationStatus y
+     * `ddl-auto=update` no la actualiza, así que un estado nuevo se rechazaría. Null = no anulada
+     * (filas anteriores a esta columna). No aparece en listas ni en los conteos.
+     */
+    private Boolean annulled;
 }

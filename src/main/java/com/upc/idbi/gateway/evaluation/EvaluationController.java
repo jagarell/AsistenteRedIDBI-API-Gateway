@@ -18,7 +18,7 @@ public class EvaluationController {
 
     @GetMapping
     public List<Evaluation> getAll() {
-        return repository.findByStatusNot(EvaluationStatus.ANULADA);
+        return repository.findActive();
     }
 
     @GetMapping("/{id}")
