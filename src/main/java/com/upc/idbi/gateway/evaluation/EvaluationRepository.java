@@ -6,4 +6,9 @@ import java.util.List;
 
 public interface EvaluationRepository extends JpaRepository<Evaluation, Long> {
     List<Evaluation> findByStatus(EvaluationStatus status);
+
+    /** Todo menos lo anulado (listas e historial). */
+    List<Evaluation> findByStatusNot(EvaluationStatus status);
+
+    long countByStatusNot(EvaluationStatus status);
 }

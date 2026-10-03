@@ -80,6 +80,15 @@ public class MinutaPdfService {
             throw new IllegalStateException("El motor no devolvió el documento de la minuta");
         }
 
+        // Sin las evidencias obligatorias (la foto general del local) no se genera el PDF.
+        Object missing = document.get("missingMandatory");
+        if (missing instanceof List<?> list && !list.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No se puede generar la minuta: falta " + String.join(", ", list.stream().map(String::valueOf).toList())
+                            + ". Es obligatoria."
+            );
+        }
+
         List<Evidence> evidences =
                 evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId);
         return render(document, evidences, evaluationId);

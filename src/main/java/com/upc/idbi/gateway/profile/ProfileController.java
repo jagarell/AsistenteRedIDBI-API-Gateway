@@ -3,6 +3,7 @@ package com.upc.idbi.gateway.profile;
 import com.upc.idbi.gateway.auth.UserEntity;
 import com.upc.idbi.gateway.auth.UserRepository;
 import com.upc.idbi.gateway.evaluation.EvaluationRepository;
+import com.upc.idbi.gateway.evaluation.EvaluationStatus;
 import com.upc.idbi.gateway.minuta.Minuta;
 import com.upc.idbi.gateway.minuta.MinutaRepository;
 import com.upc.idbi.gateway.minuta.MinutaStatus;
@@ -48,7 +49,7 @@ public class ProfileController {
                 user.getCompany(),
                 user.getCity(),
                 user.getRole().name(),
-                (int) evaluationRepository.count(),
+                (int) evaluationRepository.countByStatusNot(EvaluationStatus.ANULADA),
                 myMinutas.size(),
                 (int) sent
         );

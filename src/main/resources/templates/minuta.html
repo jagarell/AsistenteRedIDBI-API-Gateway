@@ -176,17 +176,6 @@ table.annex p { margin: 0 0 1.4mm 0; }
   </tr>
 </table>
 
-<th:block th:if="${!#lists.isEmpty(doc.annexB)}">
-  <h2><span class="num">Anexo B.</span> Datos que el asistente pediría para completar la minuta</h2>
-  <table class="t">
-    <tr><th>Nodo</th><th>Pregunta</th><th>Tipo</th><th>Campo</th></tr>
-    <tr th:each="b : ${doc.annexB}">
-      <td th:text="${b.node}">N</td><td th:text="${b.question}">Pregunta</td>
-      <td th:text="${b.type}">TEXT</td><td th:text="${b.field}">Campo</td>
-    </tr>
-  </table>
-</th:block>
-
 <div class="actions">
   <h2>Siguientes acciones</h2>
   <th:block th:if="${!#lists.isEmpty(doc.actionsId)}">

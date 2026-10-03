@@ -14,10 +14,11 @@ public class EvaluationController {
 
     private final EvaluationRepository repository;
     private final RucValidationService rucValidationService;
+    private final EvaluationAnnulService annulService;
 
     @GetMapping
     public List<Evaluation> getAll() {
-        return repository.findAll();
+        return repository.findByStatusNot(EvaluationStatus.ANULADA);
     }
 
     @GetMapping("/{id}")
@@ -41,7 +42,8 @@ public class EvaluationController {
                 .contactName(body != null ? body.getContactName() : null)
                 .contactEmail(body != null ? body.getContactEmail() : null)
                 .phone(body != null ? body.getPhone() : null)
-                .status(EvaluationStatus.EN_ANALISIS)
+                // Una evaluación nueva es un borrador hasta que se completa.
+                .status(EvaluationStatus.BORRADOR)
                 .progress(0)
                 .score(0)
                 .createdAt(LocalDateTime.now())
@@ -79,6 +81,12 @@ public class EvaluationController {
         evaluation.setStatus(body.getStatus());
 
         return repository.save(evaluation);
+    }
+
+    /** Anula una evaluación en borrador (botón del Historial). */
+    @PostMapping("/{id}/anular")
+    public Evaluation annul(@PathVariable Long id) {
+        return annulService.annul(id);
     }
 
     @DeleteMapping("/{id}")
