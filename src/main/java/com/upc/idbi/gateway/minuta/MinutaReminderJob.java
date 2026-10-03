@@ -26,7 +26,7 @@ public class MinutaReminderJob {
     private final MinutaRepository repository;
     private final MinutaNotifier notifier;
 
-    @Value("${app.reminders.draft-ttl-days:7}")
+    @Value("${app.reminders.draft-ttl-days:30}")
     private long draftTtlDays;
 
     @Value("${app.reminders.warn-days-before:2}")

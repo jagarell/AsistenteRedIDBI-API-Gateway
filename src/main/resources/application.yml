@@ -56,7 +56,7 @@ app:
   # `draft-ttl-days` días después de crearse; se avisa una vez cuando faltan
   # `warn-days-before` días o menos. La tarea corre todos los días a la hora del cron.
   reminders:
-    draft-ttl-days: ${DRAFT_TTL_DAYS:7}
+    draft-ttl-days: ${DRAFT_TTL_DAYS:30}
     warn-days-before: ${DRAFT_WARN_DAYS_BEFORE:2}
     cron: ${REMINDERS_CRON:0 0 9 * * *}
   # Orígenes permitidos por CORS (coma-separados). En producción, restringir.

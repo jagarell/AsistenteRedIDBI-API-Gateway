@@ -35,7 +35,7 @@ class MinutaReminderJobTest {
 
     @BeforeEach
     void config() {
-        ReflectionTestUtils.setField(job, "draftTtlDays", 7L);
+        ReflectionTestUtils.setField(job, "draftTtlDays", 30L);
         ReflectionTestUtils.setField(job, "warnDaysBefore", 2L);
     }
 
@@ -46,8 +46,8 @@ class MinutaReminderJobTest {
 
     @Test
     void avisaCuandoFaltanDosDiasOMenosYMarcaElAviso() {
-        // Creada hace 5 días y 1 hora: vence en ~1 día 23 h => faltan 1 día completo.
-        Minuta porVencer = borrador(1L, NOW.minusDays(5).minusHours(1));
+        // Creada hace 28 días y 1 hora: vence en ~1 día 23 h => faltan 1 día completo.
+        Minuta porVencer = borrador(1L, NOW.minusDays(28).minusHours(1));
         when(repository.findByStatusAndExpiryReminderSentAtIsNull(MinutaStatus.BORRADOR)).thenReturn(List.of(porVencer));
         when(notifier.draftExpiring(any(Minuta.class), anyLong())).thenReturn(true);
 
@@ -60,7 +60,7 @@ class MinutaReminderJobTest {
 
     @Test
     void noAvisaSiTodaviaFaltaMucho() {
-        Minuta reciente = borrador(2L, NOW.minusDays(1));
+        Minuta reciente = borrador(2L, NOW.minusDays(10));
         when(repository.findByStatusAndExpiryReminderSentAtIsNull(MinutaStatus.BORRADOR)).thenReturn(List.of(reciente));
 
         assertThat(job.remind(NOW)).isZero();
@@ -71,7 +71,7 @@ class MinutaReminderJobTest {
 
     @Test
     void avisaUnBorradorYaVencidoQueNuncaSeAviso() {
-        Minuta vencida = borrador(3L, NOW.minusDays(12));
+        Minuta vencida = borrador(3L, NOW.minusDays(40));
         when(repository.findByStatusAndExpiryReminderSentAtIsNull(MinutaStatus.BORRADOR)).thenReturn(List.of(vencida));
         when(notifier.draftExpiring(any(Minuta.class), anyLong())).thenReturn(true);
 
@@ -81,7 +81,7 @@ class MinutaReminderJobTest {
 
     @Test
     void siElPushNoSalePuedeReintentarseMasTarde() {
-        Minuta porVencer = borrador(4L, NOW.minusDays(6));
+        Minuta porVencer = borrador(4L, NOW.minusDays(29));
         when(repository.findByStatusAndExpiryReminderSentAtIsNull(MinutaStatus.BORRADOR)).thenReturn(List.of(porVencer));
         when(notifier.draftExpiring(any(Minuta.class), anyLong())).thenReturn(false);
 
