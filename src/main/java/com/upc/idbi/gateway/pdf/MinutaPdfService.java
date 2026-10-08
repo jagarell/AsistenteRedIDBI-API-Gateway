@@ -122,7 +122,6 @@ public class MinutaPdfService {
     public byte[] render(Map<String, Object> document, List<Evidence> evidences, Long evaluationId) {
         Context ctx = new Context();
         ctx.setVariable("doc", document);
-        ctx.setVariable("logo", dataUri(resource("/pdf/logo_idbi.jpg"), "image/jpeg"));
         String map = (String) document.get("mapPngBase64");
         ctx.setVariable("mapImage", map == null || map.isBlank() ? null : "data:image/png;base64," + map);
         ctx.setVariable("annexImages", annexImages(document, evidences, evaluationId));

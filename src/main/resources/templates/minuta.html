@@ -18,8 +18,7 @@ body { font-family: 'Minuta', 'Symbols', sans-serif; font-size: 8.2pt; line-heig
 #pageHeader { position: running(pageHeader); width: 180mm; border-bottom: 0.6pt solid #d9dce5; padding-bottom: 1.5mm; }
 #pageHeader table { width: 100%; border-collapse: collapse; }
 #pageHeader td { border: none; padding: 0; vertical-align: bottom; }
-#pageHeader img { height: 9mm; }
-#pageHeader .meta { text-align: right; font-size: 7pt; color: #7a7f8e; padding-bottom: 1.5mm; }
+#pageHeader .meta { text-align: left; font-size: 7pt; color: #7a7f8e; padding-bottom: 1.5mm; }
 
 h1 { font-size: 17pt; color: #22286b; margin: 0; line-height: 1.15; }
 .subtitle { font-size: 12pt; font-weight: bold; color: #d63f86; margin: 1mm 0 2.5mm 0; }
@@ -83,7 +82,6 @@ table.annex p { margin: 0 0 1.4mm 0; }
 
 <div id="pageHeader">
   <table><tr>
-    <td><img th:src="${logo}" alt="ID Business Intelligence"/></td>
     <td class="meta"><span th:text="'Minuta técnica · ' + ${doc.subtitle} + ' · ' + ${doc.date}">Minuta técnica</span></td>
   </tr></table>
 </div>
@@ -179,7 +177,7 @@ table.annex p { margin: 0 0 1.4mm 0; }
 <div class="actions">
   <h2>Siguientes acciones</h2>
   <th:block th:if="${!#lists.isEmpty(doc.actionsId)}">
-    <h3>Por parte de ID:</h3>
+    <h3>Por parte del equipo técnico:</h3>
     <ul class="rec"><li th:each="x : ${doc.actionsId}" th:text="${x}">Acción</li></ul>
   </th:block>
   <th:block th:if="${!#lists.isEmpty(doc.actionsClient)}">
