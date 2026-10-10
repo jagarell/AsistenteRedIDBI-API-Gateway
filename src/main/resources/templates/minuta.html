@@ -20,6 +20,7 @@ body { font-family: 'Minuta', 'Symbols', sans-serif; font-size: 8.2pt; line-heig
 #pageHeader td { border: none; padding: 0; vertical-align: bottom; }
 #pageHeader .meta { text-align: left; font-size: 7pt; color: #7a7f8e; padding-bottom: 1.5mm; }
 
+.viability { border: 0.8pt solid #b45309; background: #fff7ec; color: #7a3d00; font-weight: bold; padding: 2mm 3mm; margin: 1mm 0 3mm 0; font-size: 8.5pt; }
 h1 { font-size: 17pt; color: #22286b; margin: 0; line-height: 1.15; }
 .subtitle { font-size: 12pt; font-weight: bold; color: #d63f86; margin: 1mm 0 2.5mm 0; }
 .intro { color: #6b7080; font-size: 8pt; margin: 0 0 3mm 0; }
@@ -176,6 +177,7 @@ table.annex p { margin: 0 0 1.4mm 0; }
 
 <div class="actions">
   <h2>Siguientes acciones</h2>
+  <div class="viability" th:if="${doc.viabilityNotice != null and !#strings.isEmpty(doc.viabilityNotice)}" th:text="${doc.viabilityNotice}">Aviso de viabilidad</div>
   <th:block th:if="${!#lists.isEmpty(doc.actionsId)}">
     <h3>Por parte del equipo técnico:</h3>
     <ul class="rec"><li th:each="x : ${doc.actionsId}" th:text="${x}">Acción</li></ul>
