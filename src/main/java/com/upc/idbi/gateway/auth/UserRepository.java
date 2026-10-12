@@ -11,6 +11,8 @@ public interface UserRepository extends JpaRepository<UserEntity, Long> {
 
     Optional<UserEntity> findByEmailIgnoreCase(String email);
 
+    List<UserEntity> findByRole(Role role);
+
     /** Usuarios de un rol con un dispositivo registrado para push. */
     List<UserEntity> findByRoleAndFcmTokenIsNotNull(Role role);
 }

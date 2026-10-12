@@ -31,6 +31,9 @@ class MinutaNotifierTest {
     @Mock
     UserRepository users;
 
+    @Mock
+    UserNotificationRepository inbox;
+
     @InjectMocks
     MinutaNotifier notifier;
 
@@ -49,6 +52,35 @@ class MinutaNotifierTest {
 
         verify(push).trySend(eq("t1"), eq("Minuta por validar"), contains("Rock & Burgers"), anyMap());
         verify(push).trySend(eq("t2"), eq("Minuta por validar"), contains("Yomira"), anyMap());
+    }
+
+    @Test
+    void laMinutaCompletadaQuedaEnLaBandejaDeCadaSupervisorAunSinDispositivo() {
+        Minuta minuta = Minuta.builder().id(3L).evaluationId(9L).clientName("Rock").technicianName("Yomira").build();
+        UserEntity sup = user(null);
+        sup.setId(7L);
+        when(users.findByRole(Role.SUPERVISOR)).thenReturn(List.of(sup));
+
+        notifier.minutaCompleted(minuta);
+
+        verify(inbox).save(org.mockito.ArgumentMatchers.argThat((UserNotification n) ->
+                n.getUserId().equals(7L) && "MINUTA_COMPLETA".equals(n.getType()) && n.getMinutaId().equals(3L)
+                        && n.getEvaluationId().equals(9L)));
+    }
+
+    @Test
+    void alValidarSeAvisaAlTecnicoQueLaHizo() {
+        Minuta minuta = Minuta.builder().id(3L).evaluationId(9L).clientName("Rock").technicianId(1L)
+                .validatedByName("Ana Torres").build();
+        UserEntity tecnico = user("tok");
+        tecnico.setId(1L);
+        when(users.findById(1L)).thenReturn(Optional.of(tecnico));
+
+        notifier.minutaValidated(minuta);
+
+        verify(push).trySend(eq("tok"), eq("Minuta validada"), contains("Ana Torres"), anyMap());
+        verify(inbox).save(org.mockito.ArgumentMatchers.argThat((UserNotification n) ->
+                n.getUserId().equals(1L) && "MINUTA_VALIDADA".equals(n.getType())));
     }
 
     @Test
