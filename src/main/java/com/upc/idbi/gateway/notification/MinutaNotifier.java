@@ -27,10 +27,35 @@ public class MinutaNotifier {
     public void minutaCompleted(Minuta minuta) {
         String technician = minuta.getTechnicianName() == null ? "Un técnico" : minuta.getTechnicianName();
         String body = technician + " completó la minuta de " + minuta.getClientName() + ". Está lista para validar.";
-        Map<String, String> data = Map.of("type", "MINUTA_COMPLETADA", "minutaId", String.valueOf(minuta.getId()));
+        Map<String, String> data = data("MINUTA_COMPLETA", minuta);
         for (UserEntity supervisor : users.findByRoleAndFcmTokenIsNotNull(Role.SUPERVISOR)) {
             push.trySend(supervisor.getFcmToken(), "Minuta por validar", body, data);
         }
+    }
+
+    /** Avisa al técnico que hizo la minuta que el supervisor la validó (el PDF ya sale sin la marca SIN VALIDAR). */
+    public void minutaValidated(Minuta minuta) {
+        if (minuta.getTechnicianId() == null) {
+            return;
+        }
+        users.findById(minuta.getTechnicianId()).ifPresent(technician -> {
+            String supervisor = minuta.getValidatedByName() == null ? "El supervisor" : minuta.getValidatedByName();
+            String body = supervisor + " validó la minuta de " + minuta.getClientName()
+                    + ". El PDF ya sale sin la marca de agua SIN VALIDAR.";
+            push.trySend(technician.getFcmToken(), "Minuta validada", body, data("MINUTA_VALIDADA", minuta));
+        });
+    }
+
+    /** `tipo`, `minutaId` y `evaluationId` permiten abrir esa minuta al tocar la notificación. */
+    private static Map<String, String> data(String tipo, Minuta minuta) {
+        Map<String, String> data = new java.util.HashMap<>();
+        data.put("tipo", tipo);
+        data.put("type", tipo);
+        data.put("minutaId", String.valueOf(minuta.getId()));
+        if (minuta.getEvaluationId() != null) {
+            data.put("evaluationId", String.valueOf(minuta.getEvaluationId()));
+        }
+        return data;
     }
 
     /**
@@ -47,7 +72,7 @@ public class MinutaNotifier {
                     String when = daysLeft <= 0 ? "vence hoy" : daysLeft == 1 ? "vence mañana" : "vence en " + daysLeft + " días";
                     String body = "Tu minuta de " + minuta.getClientName() + " está en borrador y " + when + ". Complétala a tiempo.";
                     return push.trySend(technician.getFcmToken(), "Minuta por vencer", body,
-                            Map.of("type", "MINUTA_POR_VENCER", "minutaId", String.valueOf(minuta.getId())));
+                            data("MINUTA_POR_VENCER", minuta));
                 })
                 .orElse(false);
     }

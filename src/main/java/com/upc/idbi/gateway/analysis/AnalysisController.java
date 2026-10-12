@@ -15,7 +15,7 @@ public class AnalysisController {
     private final AnalysisService analysisService;
 
     @PostMapping
-    public AnalysisResponse analyze(
+    public Map<String, Object> analyze(
             @PathVariable Long evaluationId,
             @RequestBody(required = false) AnalyzeAnswersRequest request
     ) {
@@ -24,7 +24,7 @@ public class AnalysisController {
     }
 
     @GetMapping
-    public AnalysisResponse getAnalysis(@PathVariable Long evaluationId) {
+    public Map<String, Object> getAnalysis(@PathVariable Long evaluationId) {
         return analysisService.analyze(evaluationId, null);
     }
 }

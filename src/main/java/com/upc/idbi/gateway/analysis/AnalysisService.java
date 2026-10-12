@@ -31,7 +31,7 @@ public class AnalysisService {
     @Value("${app.fastapi.base-url}")
     private String fastApiBaseUrl;
 
-    public AnalysisResponse analyze(Long evaluationId, Map<String, String> answers) {
+    public Map<String, Object> analyze(Long evaluationId, Map<String, String> answers) {
         Evaluation evaluation = evaluationRepository.findById(evaluationId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No existe la evaluación con id " + evaluationId
@@ -55,11 +55,14 @@ public class AnalysisService {
                 buildDetectedEquipment(evaluationId)
         );
 
-        return restTemplate.postForObject(
+        // Se devuelve tal cual (criterios con peso, referencias, estado...): la app lee lo que necesita.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = restTemplate.postForObject(
                 fastApiBaseUrl + "/analyze",
                 request,
-                AnalysisResponse.class
+                Map.class
         );
+        return result;
     }
 
     /** Marca/modelo detectados por visión IA en las fotos de evidencia ya

@@ -11,6 +11,8 @@ public record ChatAnswerRequest(
         String evaluationId,
         String state,
         String answer,
-        List<String> photosBase64
+        List<String> photosBase64,
+        // Cómo se consiguió la foto: "tomar" (cámara) o "subir" (galería).
+        String mode
 ) {
 }

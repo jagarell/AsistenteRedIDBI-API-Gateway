@@ -10,6 +10,12 @@ import com.upc.idbi.gateway.evidence.EvidenceRepository;
 import com.upc.idbi.gateway.evidence.EvidenceStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
+import org.apache.pdfbox.util.Matrix;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -62,6 +68,14 @@ public class MinutaPdfService {
     private final TemplateEngine templateEngine = buildTemplateEngine();
 
     public byte[] generate(Long evaluationId) {
+        return generate(evaluationId, false, null);
+    }
+
+    /**
+     * @param preview     true = vista previa (marca "VISTA PREVIA"); no se guarda ni cambia ningún estado
+     * @param validatedBy supervisor que validó la minuta; null = sin validar (marca "SIN VALIDAR" en cada hoja)
+     */
+    public byte[] generate(Long evaluationId, boolean preview, String validatedBy) {
         Evaluation evaluation = evaluationRepository.findById(evaluationId)
                 .orElseThrow(() -> new IllegalArgumentException("No existe la evaluación " + evaluationId));
         String stateJson = stateOf(evaluation);
@@ -69,6 +83,17 @@ public class MinutaPdfService {
         Map<String, Object> request = new java.util.HashMap<>();
         request.put("state", stateJson);
         attachEditedMap(evaluation, evaluationId, request);
+        Map<String, Object> meta = new java.util.HashMap<>();
+        meta.put("validatedBy", validatedBy);
+        meta.put("preview", preview);
+        request.put("meta", meta);
+        if (evaluation.getMinutaEdicionesJson() != null && !evaluation.getMinutaEdicionesJson().isBlank()) {
+            try {
+                request.put("edits", objectMapper.readValue(evaluation.getMinutaEdicionesJson(), new TypeReference<Map<String, Object>>() {}));
+            } catch (IOException e) {
+                log.warn("Ediciones de minuta inválidas en la evaluación {}", evaluationId, e);
+            }
+        }
 
         @SuppressWarnings("unchecked")
         Map<String, Object> document = restTemplate.postForObject(
@@ -91,7 +116,8 @@ public class MinutaPdfService {
 
         List<Evidence> evidences =
                 evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId);
-        return render(document, evidences, evaluationId);
+        String watermark = preview ? "VISTA PREVIA" : validatedBy == null ? "SIN VALIDAR" : null;
+        return render(document, evidences, evaluationId, watermark);
     }
 
     /** Si el técnico editó el mapa, la minuta lo usa (con las fotos que colocó en él). */
@@ -120,14 +146,90 @@ public class MinutaPdfService {
 
     /** Renderiza un documento ya armado (también lo usan los tests). */
     public byte[] render(Map<String, Object> document, List<Evidence> evidences, Long evaluationId) {
+        return render(document, evidences, evaluationId, null);
+    }
+
+    public byte[] render(Map<String, Object> document, List<Evidence> evidences, Long evaluationId, String watermark) {
         Context ctx = new Context();
         ctx.setVariable("doc", document);
         String map = (String) document.get("mapPngBase64");
         ctx.setVariable("mapImage", map == null || map.isBlank() ? null : "data:image/png;base64," + map);
-        ctx.setVariable("annexImages", annexImages(document, evidences, evaluationId));
 
-        String html = templateEngine.process("minuta", ctx);
-        return toPdf(html);
+        boolean blocks = document.containsKey("blocks");
+        if (blocks) {
+            attachBlockImages(document, evidences, evaluationId);
+        } else {
+            ctx.setVariable("annexImages", annexImages(document, evidences, evaluationId));
+        }
+        String html = templateEngine.process(blocks ? "minuta2" : "minuta", ctx);
+        byte[] pdf = toPdf(html);
+        return watermark == null ? pdf : stamp(pdf, watermark);
+    }
+
+    /** Fotos de cada celda del anexo (por código y alcance de la evidencia) y filas de 2 o 3 columnas. */
+    @SuppressWarnings("unchecked")
+    private void attachBlockImages(Map<String, Object> document, List<Evidence> evidences, Long evaluationId) {
+        for (Map<String, Object> block : (List<Map<String, Object>>) document.getOrDefault("blocks", List.of())) {
+            Object type = block.get("t");
+            if (!"grid".equals(type) && !"block".equals(type)) {
+                continue;
+            }
+            int cols = ((Number) block.getOrDefault("cols", 2)).intValue();
+            List<Map<String, Object>> cells = (List<Map<String, Object>>) block.getOrDefault("cells", List.of());
+            List<List<Map<String, Object>>> rows = new ArrayList<>();
+            for (Map<String, Object> cell : cells) {
+                List<String> images = new ArrayList<>();
+                for (Map<String, Object> ref : (List<Map<String, Object>>) cell.getOrDefault("evidence", List.of())) {
+                    for (Evidence e : evidences) {
+                        if (String.valueOf(ref.get("code")).equals(e.getEvidenceCode())
+                                && String.valueOf(ref.get("scope")).equals(e.getChatScope() == null ? "" : e.getChatScope())) {
+                            try {
+                                images.add(dataUri(downscale(storageService.read(evaluationId, e.getStoredFileName())), "image/jpeg"));
+                            } catch (Exception ex) {
+                                log.warn("No se pudo leer la imagen de evidencia {}", e.getId(), ex);
+                            }
+                        }
+                    }
+                }
+                cell.put("images", images);
+            }
+            for (int i = 0; i < cells.size(); i += cols) {
+                List<Map<String, Object>> row = new ArrayList<>(cells.subList(i, Math.min(cells.size(), i + cols)));
+                while (row.size() < cols) {
+                    row.add(null);
+                }
+                rows.add(row);
+            }
+            block.put("rows", rows);
+        }
+    }
+
+    /** Marca de agua en diagonal en todas las hojas. */
+    private byte[] stamp(byte[] pdf, String text) {
+        try (PDDocument doc = PDDocument.load(pdf); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            for (PDPage page : doc.getPages()) {
+                float w = page.getMediaBox().getWidth();
+                float h = page.getMediaBox().getHeight();
+                try (PDPageContentStream cs = new PDPageContentStream(doc, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
+                    PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+                    gs.setNonStrokingAlphaConstant(0.16f);
+                    cs.setGraphicsStateParameters(gs);
+                    cs.setNonStrokingColor(120, 120, 130);
+                    float size = text.length() > 12 ? 62f : 78f;
+                    float width = PDType1Font.HELVETICA_BOLD.getStringWidth(text) / 1000f * size;
+                    cs.beginText();
+                    cs.setFont(PDType1Font.HELVETICA_BOLD, size);
+                    cs.setTextMatrix(Matrix.getRotateInstance(Math.toRadians(40), w / 2f - width / 2f * (float) Math.cos(Math.toRadians(40)),
+                            h / 2f - width / 2f * (float) Math.sin(Math.toRadians(40))));
+                    cs.showText(text);
+                    cs.endText();
+                }
+            }
+            doc.save(out);
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException("No se pudo poner la marca de agua", e);
+        }
     }
 
     // ---- internos -----------------------------------------------------------

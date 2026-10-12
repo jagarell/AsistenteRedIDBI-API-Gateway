@@ -62,4 +62,11 @@ public class Evaluation {
      * (filas anteriores a esta columna). No aparece en listas ni en los conteos.
      */
     private Boolean annulled;
+
+    /**
+     * Ediciones de la minuta (JSON): datos principales, observaciones, propuesta editada y cambios pedidos en el chat.
+     * Se aplican al armar el documento del PDF; no se pierden si el análisis se recalcula.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String minutaEdicionesJson;
 }

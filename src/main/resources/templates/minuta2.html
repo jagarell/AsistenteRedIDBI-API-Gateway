@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="es">
+<head>
+<meta charset="UTF-8"/>
+<title>Minuta técnica de red</title>
+<style>
+@page {
+  size: A4;
+  margin: 24mm 15mm 18mm 15mm;
+  @top-center { content: element(pageHeader); width: 180mm; vertical-align: bottom; }
+  @bottom-left { content: "Generada por el Asistente Virtual de Red"; font-family: 'Minuta'; font-size: 7pt; color: #8a8f9c; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); font-family: 'Minuta'; font-size: 8pt; color: #5b6070; }
+}
+* { box-sizing: border-box; }
+body { font-family: 'Minuta', 'Symbols', sans-serif; font-size: 8.2pt; line-height: 1.45; color: #1f2430; margin: 0; }
+.sym { font-family: 'Symbols', 'Minuta', sans-serif; }
+#pageHeader { position: running(pageHeader); width: 180mm; border-bottom: 0.6pt solid #d9dce5; padding-bottom: 1.5mm; font-size: 7pt; color: #7a7f8e; }
+h1 { font-size: 17pt; color: #22286b; margin: 0; line-height: 1.15; }
+.subtitle { font-size: 12pt; font-weight: bold; color: #d63f86; margin: 1mm 0 2.5mm 0; }
+.intro { color: #6b7080; font-size: 8pt; margin: 0 0 3mm 0; }
+table.kpis { width: 100%; border-collapse: collapse; border: 0.6pt solid #d9dce5; background: #f6f7fb; margin-bottom: 4mm; }
+table.kpis td { text-align: center; padding: 1.5mm 1mm; border-left: 0.6pt solid #d9dce5; font-size: 7pt; color: #6b7080; }
+table.kpis td:first-child { border-left: none; }
+table.kpis .n { font-size: 15pt; font-weight: bold; line-height: 1.1; }
+h2 { font-size: 11.5pt; color: #22286b; margin: 5mm 0 2mm 0; padding-bottom: 1mm; border-bottom: 0.8pt solid #d63f86; page-break-after: avoid; }
+h2 .num { color: #d63f86; }
+h2.annex { page-break-before: always; }
+h3 { font-size: 9pt; color: #22286b; margin: 3mm 0 1.2mm 0; page-break-after: avoid; }
+table.t { width: 100%; border-collapse: collapse; margin-bottom: 2mm; }
+table.t tr { page-break-inside: avoid; }
+table.t th { background: #22286b; color: #ffffff; text-align: left; font-size: 7.6pt; padding: 1.6mm 2mm; border: 0.6pt solid #22286b; }
+table.t td { border: 0.6pt solid #d9dce5; padding: 1.6mm 2mm; vertical-align: middle; }
+table.t td.k { background: #f3f5fa; font-weight: bold; color: #2b3040; width: 30%; }
+table.t tr.pending td { background: #fff6ec; }
+.pend { color: #b45309; }
+.bad { color: #b42318; }
+.okc { color: #2e7d32; }
+table.t td.st { font-weight: bold; width: 18%; }
+table.t td.st.ok { background: #e8f5e9; color: #2e7d32; }
+table.t td.st.warn { background: #fff3e6; color: #b45309; }
+ul.rec { margin: 0 0 2mm 0; padding-left: 5mm; }
+ul.rec li { margin-bottom: 1.4mm; }
+p { margin: 0 0 1.6mm 0; }
+.note { color: #7a7f8e; font-size: 7.5pt; font-style: italic; margin: 1mm 0 0 0; }
+.map { text-align: center; margin: 2mm 0; page-break-inside: avoid; }
+.map img { width: 180mm; height: 127.5mm; }
+.maplegend { text-align: center; color: #7a7f8e; font-size: 7pt; }
+table.exec { width: 100%; border-collapse: collapse; border: 0.6pt solid #d9dce5; }
+table.exec td { padding: 3mm; vertical-align: middle; }
+table.exec td.status { width: 25%; text-align: center; background: #fff3e6; border-right: 0.6pt solid #d9dce5; }
+table.exec td.status.ok { background: #e8f5e9; }
+table.exec .lbl { font-size: 7pt; font-weight: bold; color: #b45309; letter-spacing: 0.3pt; }
+table.exec .val { font-size: 13pt; font-weight: bold; color: #b45309; }
+table.exec td.status.ok .lbl, table.exec td.status.ok .val { color: #2e7d32; }
+.viability { border: 0.8pt solid #b45309; background: #fff7ec; color: #7a3d00; font-weight: bold; padding: 2mm 3mm; font-size: 8.5pt; }
+table.grid { width: 100%; border-collapse: collapse; margin-bottom: 2mm; }
+table.grid td { width: 50%; vertical-align: top; padding: 1.5mm; border: 0.6pt solid #d9dce5; text-align: center; }
+table.grid.c3 td { width: 33.3%; }
+table.grid img { width: 100%; max-height: 62mm; }
+table.grid.c3 img { max-height: 48mm; }
+.cap { font-size: 7pt; color: #6b7080; margin: 0.8mm 0; }
+.ttl { color: #22286b; font-weight: bold; font-size: 8.4pt; }
+.lines { font-size: 7.6pt; color: #3b4252; text-align: left; }
+.blockh { background: #f3f5fa; font-weight: bold; color: #22286b; padding: 1.4mm 2mm; border: 0.6pt solid #d9dce5; page-break-after: avoid; }
+.lnk { word-break: break-all; }
+</style>
+</head>
+<body>
+<div id="pageHeader" th:text="${doc.header}">Minuta técnica</div>
+
+<h1 th:text="${doc.title}">MINUTA TÉCNICA DE RED</h1>
+<div class="subtitle" th:text="${doc.subtitle}">Local</div>
+<p class="intro" th:text="${doc.intro}">Intro</p>
+
+<table class="kpis"><tr>
+  <td th:each="k : ${doc.kpis}"><div class="n" th:style="'color:' + ${k.color}" th:text="${k.value} + '%'">0%</div><span th:text="${k.label}">Conectividad</span><br/><b th:style="'color:' + ${k.color}" th:text="${k.level}">Buena</b></td>
+  <td><div class="n" style="color:#22286b" th:text="${doc.global.value} + '%'">0%</div><span>Puntuación global</span><br/><b style="color:#22286b" th:text="${doc.global.level}">Buena</b></td>
+</tr></table>
+
+<th:block th:each="b : ${doc.blocks}">
+  <h2 th:if="${b.t == 'h2'}" th:class="${b.cls}"><span class="num" th:text="${b.n}">1.</span> <span th:text="${b.text}">Sección</span></h2>
+  <h3 th:if="${b.t == 'h3'}" th:text="${b.text}">Subtítulo</h3>
+  <p th:if="${b.t == 'para'}"><b th:if="${b.b != null}" th:text="${b.b} + ' '"></b><span th:text="${b.text}">Texto</span></p>
+  <p th:if="${b.t == 'note'}" class="note" th:text="${b.text}">Nota</p>
+
+  <table th:if="${b.t == 'kv'}" class="t">
+    <tr th:each="r : ${b.rows}" th:class="${r.pending} ? 'pending'">
+      <td class="k" th:text="${r.label}">Campo</td>
+      <td th:if="${r.pending == null or !r.pending}" th:class="${r.bad} ? 'bad'" th:text="${r.value}">Valor</td>
+      <td th:if="${r.pending != null and r.pending}" class="pend"><b>Pendiente</b> · <span th:text="${r.note}">nota</span></td>
+    </tr>
+  </table>
+
+  <table th:if="${b.t == 'table'}" class="t">
+    <tr th:if="${b.head != null}"><th th:each="h : ${b.head}" th:text="${h}">Col</th></tr>
+    <tr th:each="r : ${b.rows}">
+      <td th:each="c, st : ${r.cells}" th:class="(${st.first and b.firstBold} ? 'k ' : '') + (${st.last and (r.badLast == true or r.lastCls == 'bad')} ? 'bad' : (${st.last and r.lastCls == 'ok'} ? 'okc' : ''))" th:text="${c}">Celda</td>
+    </tr>
+  </table>
+
+  <table th:if="${b.t == 'rules'}" class="t">
+    <tr><th>Regla</th><th>Resultado</th><th>Estado</th></tr>
+    <tr th:each="r : ${b.rows}">
+      <td th:text="${r.rule}">Regla</td>
+      <td th:text="${r.result}">Resultado</td>
+      <td th:class="'st ' + (${r.ok} ? 'ok' : 'warn')"><span class="sym" th:text="${r.ok} ? '✓' : '⚠'">✓</span> <span th:text="${r.status}">Estado</span></td>
+    </tr>
+  </table>
+
+  <ul th:if="${b.t == 'ul'}" class="rec"><li th:each="i : ${b.items}"><b th:if="${i.b != null}" th:text="${i.b} + ' '"></b><span th:text="${i.text}">Ítem</span></li></ul>
+
+  <div th:if="${b.t == 'map' and mapImage != null}" class="map"><img th:src="${mapImage}" alt="Topología de red"/><div class="maplegend" th:text="${doc.mapLegend}">Leyenda</div></div>
+
+  <table th:if="${b.t == 'exec'}" class="exec"><tr>
+    <td th:class="'status ' + (${b.ok} ? 'ok' : '')"><div class="lbl">ESTADO FINAL</div><div class="val" th:text="${b.status}">OBSERVADO</div></td>
+    <td th:text="${b.text}">Resumen</td>
+  </tr></table>
+
+  <div th:if="${b.t == 'viab'}" class="viability" th:text="${b.text}">Aviso</div>
+
+  <table th:if="${b.t == 'grid'}" th:class="'grid c' + ${b.cols}">
+    <tr th:each="row : ${b.rows}">
+      <td th:each="cell : ${row}">
+        <th:block th:if="${cell != null}">
+          <img th:each="src : ${cell.images}" th:src="${src}" alt="Evidencia"/>
+          <div class="cap" th:text="${cell.caption}">Imagen de</div>
+          <div class="ttl" th:text="${cell.title}">Título</div>
+          <div class="lines"><div th:each="l : ${cell.lines}" th:text="${l}">Línea</div></div>
+        </th:block>
+      </td>
+    </tr>
+  </table>
+
+  <th:block th:if="${b.t == 'block'}">
+    <div class="blockh" th:text="${b.heading}">Bloque</div>
+    <table th:class="'grid c' + ${b.cols}">
+      <tr th:each="row : ${b.rows}">
+        <td th:each="cell : ${row}">
+          <th:block th:if="${cell != null}">
+            <img th:each="src : ${cell.images}" th:src="${src}" alt="Evidencia"/>
+            <div class="cap" th:text="${cell.caption}">Imagen de</div>
+            <div class="ttl" th:text="${cell.title}">Título</div>
+            <div class="lines"><div th:each="l : ${cell.lines}" th:text="${l}">Línea</div></div>
+          </th:block>
+        </td>
+      </tr>
+    </table>
+  </th:block>
+</th:block>
+</body>
+</html>

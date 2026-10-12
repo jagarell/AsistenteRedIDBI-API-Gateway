@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.minuta;
 
+import com.upc.idbi.gateway.evaluation.Evaluation;
 import com.upc.idbi.gateway.minuta.dto.MinutaRequest;
 import com.upc.idbi.gateway.notification.MinutaNotifier;
 import com.upc.idbi.gateway.security.AuthenticatedUser;
@@ -71,11 +72,7 @@ public class MinutaService {
     @Transactional
     public Minuta update(Long id, MinutaRequest request, AuthenticatedUser editor) {
         Minuta minuta = get(id);
-        if (minuta.getStatus() == MinutaStatus.VALIDADA) {
-            throw new IllegalArgumentException(
-                    "La minuta ya fue validada y no puede editarse"
-            );
-        }
+        assertCanEdit(minuta, editor);
         minuta.setClientName(request.clientName().trim());
         if (request.address() != null) {
             minuta.setAddress(request.address());
@@ -143,7 +140,76 @@ public class MinutaService {
         minuta.setValidatedByName(supervisor.fullName());
         minuta.setValidatedAt(LocalDateTime.now());
         minuta.setUpdatedAt(LocalDateTime.now());
-        return repository.save(minuta);
+        Minuta saved = repository.save(minuta);
+        // Avisa al técnico que la hizo; un push que falla nunca impide validar.
+        notifier.minutaValidated(saved);
+        return saved;
+    }
+
+    /** La minuta de una evaluación; si todavía no existe se crea en BORRADOR con los datos de la evaluación. */
+    @Transactional
+    public Minuta ensureForEvaluation(Evaluation evaluation, AuthenticatedUser author) {
+        return repository.findFirstByEvaluationIdOrderByIdDesc(evaluation.getId()).orElseGet(() -> {
+            LocalDateTime now = LocalDateTime.now();
+            String name = evaluation.getRestaurantName() == null || evaluation.getRestaurantName().isBlank()
+                    ? "Evaluación " + evaluation.getId() : evaluation.getRestaurantName().trim();
+            return repository.save(Minuta.builder()
+                    .evaluationId(evaluation.getId())
+                    .clientName(name)
+                    .address(evaluation.getAddress())
+                    .contactName(evaluation.getContactName())
+                    .contactPhone(evaluation.getPhone())
+                    .technicianId(author == null ? null : author.id())
+                    .technicianName(author == null ? null : author.fullName())
+                    .status(MinutaStatus.BORRADOR)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
+        });
+    }
+
+    /** Técnico: solo en BORRADOR. Supervisor: en BORRADOR y COMPLETA. Nadie edita una minuta VALIDADA. */
+    public void assertCanEdit(Minuta minuta, AuthenticatedUser editor) {
+        if (minuta.getStatus() == MinutaStatus.VALIDADA) {
+            throw new IllegalArgumentException("La minuta ya fue validada y no puede editarse");
+        }
+        boolean supervisor = editor != null && editor.isSupervisor();
+        if (minuta.getStatus() == MinutaStatus.COMPLETA && !supervisor) {
+            throw new IllegalArgumentException("La minuta está completa: solo el supervisor puede editarla");
+        }
+    }
+
+    /** Lo editado en "Datos principales" también se ve en la lista de minutas. */
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public void syncFromEditions(Minuta minuta, java.util.Map<String, Object> editions) {
+        Object datos = editions.get("datos");
+        if (!(datos instanceof java.util.Map<?, ?> map)) {
+            return;
+        }
+        Object name = map.get("nombre");
+        if (name instanceof String n && !n.isBlank()) {
+            minuta.setClientName(n.trim());
+        }
+        Object address = map.get("dir");
+        if (address instanceof String a && !a.isBlank()) {
+            minuta.setAddress(a.trim());
+        }
+        Object phone = map.get("celular");
+        if (phone instanceof String ph && !ph.isBlank()) {
+            minuta.setContactPhone(ph.trim());
+        }
+        Object contact = map.get("encargado");
+        if (contact instanceof String c && !c.isBlank()) {
+            minuta.setContactName(c.trim());
+        }
+        minuta.setUpdatedAt(LocalDateTime.now());
+        repository.save(minuta);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<Minuta> findByEvaluation(Long evaluationId) {
+        return repository.findFirstByEvaluationIdOrderByIdDesc(evaluationId);
     }
 
     private IllegalArgumentException notFound(Long id) {

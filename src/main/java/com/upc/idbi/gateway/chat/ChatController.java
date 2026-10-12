@@ -41,6 +41,15 @@ public class ChatController {
         return chatService.amendChat(evaluationId, request);
     }
 
+    /** Editar una respuesta anterior (rewind: chat en curso · reopen: evaluación terminada). */
+    @PostMapping("/edit")
+    public ChatResponse edit(
+            @PathVariable Long evaluationId,
+            @RequestBody ChatEditRequest request
+    ) {
+        return chatService.editChat(evaluationId, request);
+    }
+
     /** Responder un nodo EVIDENCE: 1 a 3 fotos por multipart (en vez de base64
      * dentro del JSON, para no inflar el payload del lado del cliente). El
      * gateway las convierte a base64 para la IA y las guarda como evidencia
@@ -49,8 +58,9 @@ public class ChatController {
     public ChatResponse answerWithPhotos(
             @PathVariable Long evaluationId,
             @RequestPart("files") List<MultipartFile> files,
-            @RequestPart("state") String state
+            @RequestPart("state") String state,
+            @RequestPart(value = "mode", required = false) String mode
     ) {
-        return chatService.answerChatWithPhotos(evaluationId, files, state);
+        return chatService.answerChatWithPhotos(evaluationId, files, state, mode);
     }
 }

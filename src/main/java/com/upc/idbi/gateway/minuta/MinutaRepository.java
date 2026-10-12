@@ -12,6 +12,8 @@ public interface MinutaRepository extends JpaRepository<Minuta, Long> {
 
     List<Minuta> findAllByOrderByCreatedAtDesc();
 
+    java.util.Optional<Minuta> findFirstByEvaluationIdOrderByIdDesc(Long evaluationId);
+
     void deleteByEvaluationIdAndStatus(Long evaluationId, MinutaStatus status);
 
     /** Borradores a los que todavía no se les avisó que están por vencer. */

@@ -13,6 +13,10 @@ public record ChatAmendRequest(
         String evidenceScope,
         Map<String, Object> fields,
         String clarificationKey,
-        String clarificationAnswer
+        String clarificationAnswer,
+        // Chat nuevo: id completo del nodo (E5#Cocina), lecturas eliminadas (X roja) y restaurar.
+        String nodeId,
+        java.util.List<String> deleted,
+        Boolean restore
 ) {
 }

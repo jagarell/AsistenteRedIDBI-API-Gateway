@@ -32,6 +32,8 @@ public record ChatResponse(
         // Solo E3: imágenes con las credenciales ya desenfocadas (base64). El
         // gateway guarda estas en vez de las originales y se las devuelve a la
         // app para que su miniatura tampoco muestre las credenciales.
-        List<String> processedImages
+        List<String> processedImages,
+        // Avisos que aparecen en el chat entre la respuesta y la siguiente pregunta.
+        List<Map<String, Object>> notices
 ) {
 }

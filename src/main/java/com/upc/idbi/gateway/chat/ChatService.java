@@ -57,7 +57,8 @@ public class ChatService {
                 String.valueOf(evaluationId),
                 request.state(),
                 request.answer() == null ? "" : request.answer(),
-                List.of()
+                List.of(),
+                request.mode()
         ));
     }
 
@@ -66,25 +67,43 @@ public class ChatService {
                 String.valueOf(evaluationId), request.state(), request.evidenceCode(),
                 request.evidenceScope() == null ? "" : request.evidenceScope(),
                 request.fields() == null ? Map.of() : request.fields(),
-                request.clarificationKey(), request.clarificationAnswer()
+                request.clarificationKey(), request.clarificationAnswer(),
+                request.nodeId(), request.deleted(), request.restore()
         );
         ChatResponse response = restTemplate.postForObject(
                 fastApiBaseUrl + "/chat/amend", normalized, ChatResponse.class);
 
         // La evidencia corregida también se actualiza en la fila guardada.
         if (response != null && response.lastEvidence() != null && request.evidenceCode() != null) {
-            try {
-                String json = objectMapper.writeValueAsString(response.lastEvidence().get("extracted"));
-                for (Evidence e : evidenceRepository.findByEvaluationIdAndEvidenceCodeAndChatScope(
-                        evaluationId, request.evidenceCode(), normalized.evidenceScope())) {
-                    e.setExtractedJson(json);
-                    evidenceRepository.save(e);
-                }
-            } catch (Exception ex) {
-                log.warn("No se pudo actualizar la evidencia corregida de la evaluación {}", evaluationId, ex);
-            }
+            updateStoredReading(evaluationId, response.lastEvidence());
+        }
+        if (response != null && Boolean.TRUE.equals(response.completed())) {
+            persistAnswers(evaluationId, response.answers());
         }
         return response;
+    }
+
+    /** Editar una respuesta anterior: el motor recalcula todo a partir del estado. */
+    public ChatResponse editChat(Long evaluationId, ChatEditRequest request) {
+        ChatEditRequest normalized = new ChatEditRequest(
+                String.valueOf(evaluationId), request.state(), request.nodeId(),
+                request.mode() == null ? "reopen" : request.mode());
+        return restTemplate.postForObject(fastApiBaseUrl + "/chat/edit", normalized, ChatResponse.class);
+    }
+
+    /** Guarda la lectura confirmada o corregida en las fotos ya guardadas de esa evidencia. */
+    private void updateStoredReading(Long evaluationId, Map<String, Object> info) {
+        try {
+            String json = objectMapper.writeValueAsString(info.get("extracted"));
+            String scope = info.get("scope") == null ? "" : String.valueOf(info.get("scope"));
+            for (Evidence e : evidenceRepository.findByEvaluationIdAndEvidenceCodeAndChatScope(
+                    evaluationId, String.valueOf(info.get("code")), scope)) {
+                e.setExtractedJson(json);
+                evidenceRepository.save(e);
+            }
+        } catch (Exception ex) {
+            log.warn("No se pudo actualizar la lectura de la evidencia de la evaluación {}", evaluationId, ex);
+        }
     }
 
     /** Variante para nodos EVIDENCE: convierte las fotos subidas a base64 y las
@@ -93,7 +112,7 @@ public class ChatService {
      * fotos como evidencia de la evaluación — para E3 (etiqueta del router)
      * se guardan las versiones con las credenciales desenfocadas, nunca el
      * original. */
-    public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state) {
+    public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state, String mode) {
         List<byte[]> originals = new ArrayList<>();
         List<String> base64 = new ArrayList<>();
         try {
@@ -107,7 +126,7 @@ public class ChatService {
         }
 
         ChatResponse response = callFastApiAndPersist(evaluationId, new ChatAnswerRequest(
-                String.valueOf(evaluationId), state, "", base64
+                String.valueOf(evaluationId), state, "", base64, mode
         ));
 
         if (response != null && response.lastEvidence() != null && response.validationError() == null) {
@@ -123,6 +142,11 @@ public class ChatService {
                 ChatResponse.class
         );
 
+        // Lectura confirmada con "Correcto" (con o sin ediciones): queda en las fotos guardadas.
+        if (response != null && response.lastEvidence() != null
+                && Boolean.TRUE.equals(response.lastEvidence().get("confirmed"))) {
+            updateStoredReading(evaluationId, response.lastEvidence());
+        }
         if (response != null && Boolean.TRUE.equals(response.completed())) {
             persistAnswers(evaluationId, response.answers());
         }
@@ -151,7 +175,7 @@ public class ChatService {
                 boolean useProcessed = processed != null && i < processed.size() && !processed.get(i).isBlank();
                 byte[] content = useProcessed ? Base64.getDecoder().decode(processed.get(i)) : originals.get(i);
                 // Si se pidió ocultar credenciales (E3) y no hay versión procesada, no se guarda nada.
-                if ("E3".equals(code) && !useProcessed) {
+                if (("E3".equals(code) || "E2e".equals(code)) && !useProcessed) {
                     continue;
                 }
                 String stored = storageService.saveBytes(evaluationId, content, ".jpg");
