@@ -93,6 +93,13 @@ public class GlobalExceptionHandler {
         return Map.of("message", "No se pudo completar la operación, intenta de nuevo en unos segundos.");
     }
 
+    /** Una acción que exige otro rol (por ejemplo validar o rechazar sin ser supervisor) responde 403, no 500. */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Map<String, String> handleAccessDenied(Exception exception) {
+        return Map.of("message", "No tienes permiso para realizar esta acción.");
+    }
+
     /** Última red de contención: cualquier excepción no manejada arriba cae
      * acá en vez de mostrarle al técnico un error opaco sin contexto. */
     @ExceptionHandler(Exception.class)
