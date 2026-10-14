@@ -52,6 +52,20 @@ public class MinutaNotifier {
         });
     }
 
+    /** Avisa al técnico que el supervisor devolvió su minuta: debe corregirla y volver a completarla. */
+    public void minutaRejected(Minuta minuta) {
+        if (minuta.getTechnicianId() == null) {
+            return;
+        }
+        users.findById(minuta.getTechnicianId()).ifPresent(technician -> {
+            String supervisor = minuta.getRejectedByName() == null ? "El supervisor" : minuta.getRejectedByName();
+            String body = supervisor + " rechazó la minuta de " + minuta.getClientName() + ": "
+                    + minuta.getRejectionReason() + ". Corrígela y vuelve a completarla.";
+            save(technician.getId(), "Minuta rechazada", body, minuta, "MINUTA_RECHAZADA");
+            push.trySend(technician.getFcmToken(), "Minuta rechazada", body, data("MINUTA_RECHAZADA", minuta));
+        });
+    }
+
     /** Guarda el aviso en la bandeja del usuario; nunca debe impedir completar o validar la minuta. */
     private void save(Long userId, String title, String body, Minuta minuta, String type) {
         if (userId == null) {

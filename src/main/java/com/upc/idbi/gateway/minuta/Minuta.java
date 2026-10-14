@@ -87,6 +87,20 @@ public class Minuta {
     @Column(name = "validated_at")
     private LocalDateTime validatedAt;
 
+    /**
+     * Motivo con el que el supervisor devolvió la minuta al técnico. La minuta vuelve a BORRADOR (no se agrega un
+     * estado nuevo: la base tiene una restricción con los valores de MinutaStatus que `ddl-auto=update` no actualiza).
+     * Se borra cuando el técnico la vuelve a completar.
+     */
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    @Column(name = "rejected_by_name", length = 150)
+    private String rejectedByName;
+
+    @Column(name = "rejected_at")
+    private LocalDateTime rejectedAt;
+
     /** Cuándo se avisó al técnico que el borrador estaba por vencer (una sola vez). */
     @Column(name = "expiry_reminder_sent_at")
     private LocalDateTime expiryReminderSentAt;

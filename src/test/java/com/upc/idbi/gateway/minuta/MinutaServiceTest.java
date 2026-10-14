@@ -112,4 +112,55 @@ class MinutaServiceTest {
 
         verify(notifier, never()).minutaCompleted(any(Minuta.class));
     }
+
+    @Test
+    void rechazarDevuelveLaMinutaABorradorConElMotivoYAvisaAlTecnico() {
+        Minuta completa = Minuta.builder()
+                .id(10L).clientName("Cliente").status(MinutaStatus.COMPLETA).build();
+        when(repository.findById(10L)).thenReturn(java.util.Optional.of(completa));
+        when(repository.save(any(Minuta.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Minuta result = service.reject(10L, "  Falta la foto del frontis ", supervisor);
+
+        assertThat(result.getStatus()).isEqualTo(MinutaStatus.BORRADOR);
+        assertThat(result.getRejectionReason()).isEqualTo("Falta la foto del frontis");
+        assertThat(result.getRejectedByName()).isEqualTo("Supervisor");
+        verify(notifier).minutaRejected(result);
+    }
+
+    @Test
+    void rechazarExigeMotivoYEstadoCompleta() {
+        Minuta completa = Minuta.builder().id(11L).clientName("C").status(MinutaStatus.COMPLETA).build();
+        Minuta borrador = Minuta.builder().id(12L).clientName("C").status(MinutaStatus.BORRADOR).build();
+        when(repository.findById(11L)).thenReturn(java.util.Optional.of(completa));
+        when(repository.findById(12L)).thenReturn(java.util.Optional.of(borrador));
+
+        assertThatThrownBy(() -> service.reject(11L, " ", supervisor)).hasMessageContaining("motivo");
+        assertThatThrownBy(() -> service.reject(12L, "x", supervisor)).hasMessageContaining("COMPLETA");
+    }
+
+    @Test
+    void alVolverACompletarSeBorraElRechazoYSeAvisaOtraVezALosSupervisores() {
+        Minuta devuelta = Minuta.builder().id(13L).clientName("C").status(MinutaStatus.BORRADOR)
+                .rejectionReason("Falta algo").rejectedByName("Supervisor").build();
+        when(repository.findById(13L)).thenReturn(java.util.Optional.of(devuelta));
+        when(repository.save(any(Minuta.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Minuta result = service.complete(13L);
+
+        assertThat(result.getStatus()).isEqualTo(MinutaStatus.COMPLETA);
+        assertThat(result.getRejectionReason()).isNull();
+        verify(notifier).minutaCompleted(result);
+    }
+
+    @Test
+    void elSupervisorNoEditaYElTecnicoSoloEnBorrador() {
+        Minuta borrador = Minuta.builder().id(14L).status(MinutaStatus.BORRADOR).build();
+        Minuta completa = Minuta.builder().id(15L).status(MinutaStatus.COMPLETA).build();
+
+        assertThatThrownBy(() -> service.assertCanEdit(borrador, supervisor)).hasMessageContaining("supervisor");
+        assertThatThrownBy(() -> service.assertCanEdit(completa, supervisor)).hasMessageContaining("supervisor");
+        assertThatThrownBy(() -> service.assertCanEdit(completa, tecnico)).hasMessageContaining("completa");
+        service.assertCanEdit(borrador, tecnico);
+    }
 }

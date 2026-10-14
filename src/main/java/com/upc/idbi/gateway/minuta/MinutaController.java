@@ -77,4 +77,18 @@ public class MinutaController {
     ) {
         return MinutaResponse.from(service.validate(id, supervisor));
     }
+
+    /** Devuelve una minuta completa al técnico con el motivo. Sólo supervisores. */
+    @PostMapping("/{id}/rechazar")
+    @PreAuthorize("hasRole('SUPERVISOR')")
+    public MinutaResponse reject(
+            @PathVariable Long id,
+            @RequestBody RejectRequest request,
+            @AuthenticationPrincipal AuthenticatedUser supervisor
+    ) {
+        return MinutaResponse.from(service.reject(id, request.reason(), supervisor));
+    }
+
+    public record RejectRequest(String reason) {
+    }
 }

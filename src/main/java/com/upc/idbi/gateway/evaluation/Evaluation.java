@@ -82,4 +82,7 @@ public class Evaluation {
     private String validatedByName;
     @Transient
     private String technicianName;
+    /** Motivo del rechazo mientras la minuta está devuelta al técnico (null si no lo está). */
+    @Transient
+    private String rejectionReason;
 }

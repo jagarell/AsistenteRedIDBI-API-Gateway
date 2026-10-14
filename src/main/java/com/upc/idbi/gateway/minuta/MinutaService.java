@@ -113,6 +113,10 @@ public class MinutaService {
         }
         boolean wasCompleted = minuta.getStatus() == MinutaStatus.COMPLETA;
         minuta.setStatus(MinutaStatus.COMPLETA);
+        // Si el supervisor la había devuelto, este es el reenvío: el motivo anterior ya no aplica.
+        minuta.setRejectionReason(null);
+        minuta.setRejectedByName(null);
+        minuta.setRejectedAt(null);
         minuta.setUpdatedAt(LocalDateTime.now());
         Minuta saved = repository.save(minuta);
         if (!wasCompleted) {
@@ -146,6 +150,29 @@ public class MinutaService {
         return saved;
     }
 
+    /**
+     * El supervisor devuelve una minuta COMPLETA al técnico con el motivo. Vuelve a BORRADOR: el técnico la edita y
+     * la completa otra vez, y entonces se avisa de nuevo a los supervisores.
+     */
+    @Transactional
+    public Minuta reject(Long id, String reason, AuthenticatedUser supervisor) {
+        Minuta minuta = get(id);
+        if (minuta.getStatus() != MinutaStatus.COMPLETA) {
+            throw new IllegalArgumentException("Solo se puede rechazar una minuta en estado COMPLETA");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Indica el motivo del rechazo para que el técnico sepa qué corregir");
+        }
+        minuta.setStatus(MinutaStatus.BORRADOR);
+        minuta.setRejectionReason(reason.trim());
+        minuta.setRejectedByName(supervisor.fullName());
+        minuta.setRejectedAt(LocalDateTime.now());
+        minuta.setUpdatedAt(LocalDateTime.now());
+        Minuta saved = repository.save(minuta);
+        notifier.minutaRejected(saved);
+        return saved;
+    }
+
     /** La minuta de una evaluación; si todavía no existe se crea en BORRADOR con los datos de la evaluación. */
     @Transactional
     public Minuta ensureForEvaluation(Evaluation evaluation, AuthenticatedUser author) {
@@ -168,14 +195,16 @@ public class MinutaService {
         });
     }
 
-    /** Técnico: solo en BORRADOR. Supervisor: en BORRADOR y COMPLETA. Nadie edita una minuta VALIDADA. */
+    /** Solo el técnico edita, y solo en BORRADOR (también cuando el supervisor la devolvió). El supervisor aprueba o rechaza, no edita. */
     public void assertCanEdit(Minuta minuta, AuthenticatedUser editor) {
+        if (editor != null && editor.isSupervisor()) {
+            throw new IllegalArgumentException("El supervisor no edita las minutas: puede validarlas o rechazarlas");
+        }
         if (minuta.getStatus() == MinutaStatus.VALIDADA) {
             throw new IllegalArgumentException("La minuta ya fue validada y no puede editarse");
         }
-        boolean supervisor = editor != null && editor.isSupervisor();
-        if (minuta.getStatus() == MinutaStatus.COMPLETA && !supervisor) {
-            throw new IllegalArgumentException("La minuta está completa: solo el supervisor puede editarla");
+        if (minuta.getStatus() == MinutaStatus.COMPLETA) {
+            throw new IllegalArgumentException("La minuta está completa y en revisión: espera la respuesta del supervisor");
         }
     }
 

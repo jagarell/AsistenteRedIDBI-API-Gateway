@@ -26,7 +26,10 @@ public record MinutaResponse(
         LocalDateTime updatedAt,
         Long validatedById,
         String validatedByName,
-        LocalDateTime validatedAt
+        LocalDateTime validatedAt,
+        String rejectionReason,
+        String rejectedByName,
+        LocalDateTime rejectedAt
 ) {
     public static MinutaResponse from(Minuta m) {
         return new MinutaResponse(
@@ -47,7 +50,10 @@ public record MinutaResponse(
                 m.getUpdatedAt(),
                 m.getValidatedById(),
                 m.getValidatedByName(),
-                m.getValidatedAt()
+                m.getValidatedAt(),
+                m.getRejectionReason(),
+                m.getRejectedByName(),
+                m.getRejectedAt()
         );
     }
 }

@@ -29,6 +29,7 @@ public class EvaluationEstadoService {
             e.setMinutaId(m.getId());
             e.setValidatedByName(m.getValidatedByName());
             e.setTechnicianName(m.getTechnicianName());
+            e.setRejectionReason(m.getStatus() == com.upc.idbi.gateway.minuta.MinutaStatus.BORRADOR ? m.getRejectionReason() : null);
         } else {
             boolean chatTerminado = e.getChatAnswersJson() != null && !e.getChatAnswersJson().isBlank();
             e.setMinutaStatus(chatTerminado ? "BORRADOR" : "EN_CURSO");
