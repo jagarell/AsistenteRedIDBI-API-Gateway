@@ -69,4 +69,17 @@ public class Evaluation {
      */
     @Column(columnDefinition = "TEXT")
     private String minutaEdicionesJson;
+
+    /**
+     * Estado que ve el Historial (no se guarda): EN_CURSO = el chat no terminó; BORRADOR/COMPLETA/VALIDADA =
+     * el de su minuta, o BORRADOR si el chat terminó y todavía no hay minuta. Lo rellena EvaluationEstadoService.
+     */
+    @Transient
+    private String minutaStatus;
+    @Transient
+    private Long minutaId;
+    @Transient
+    private String validatedByName;
+    @Transient
+    private String technicianName;
 }

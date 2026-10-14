@@ -15,15 +15,16 @@ public class EvaluationController {
     private final EvaluationRepository repository;
     private final RucValidationService rucValidationService;
     private final EvaluationAnnulService annulService;
+    private final EvaluationEstadoService estadoService;
 
     @GetMapping
     public List<Evaluation> getAll() {
-        return repository.findActive();
+        return estadoService.decorate(repository.findActive());
     }
 
     @GetMapping("/{id}")
     public Evaluation getById(@PathVariable Long id) {
-        return repository.findById(id).orElseThrow();
+        return estadoService.decorate(repository.findById(id).orElseThrow());
     }
 
     @PostMapping

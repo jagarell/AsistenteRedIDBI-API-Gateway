@@ -14,18 +14,19 @@ import java.util.List;
 public class HistoryController {
 
     private final EvaluationRepository repository;
+    private final com.upc.idbi.gateway.evaluation.EvaluationEstadoService estadoService;
 
     @GetMapping
     public List<Evaluation> getHistory(@RequestParam(required = false) EvaluationStatus status) {
         if (status != null) {
-            return repository.findByStatus(status);
+            return estadoService.decorate(repository.findByStatus(status));
         }
 
-        return repository.findActive();
+        return estadoService.decorate(repository.findActive());
     }
 
     @GetMapping("/{id}")
     public Evaluation getHistoryDetail(@PathVariable Long id) {
-        return repository.findById(id).orElseThrow();
+        return estadoService.decorate(repository.findById(id).orElseThrow());
     }
 }
