@@ -120,8 +120,10 @@ public class MinutaPdfService {
             );
         }
 
+        // Los documentos del cliente adjuntados en el Chat IA (DOC_CLIENTE) no van al anexo de fotos.
         List<Evidence> evidences =
-                evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId);
+                evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId).stream()
+                        .filter(e -> !"DOC_CLIENTE".equals(e.getEvidenceCode())).toList();
         String watermark = preview ? "VISTA PREVIA" : validatedBy == null ? "SIN VALIDAR" : null;
         return render(document, evidences, evaluationId, watermark);
     }

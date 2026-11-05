@@ -50,6 +50,26 @@ public class ChatController {
         return chatService.editChat(evaluationId, request);
     }
 
+    /** Adjunto del cliente en el Chat IA (ficha RUC, comprobante, recibo, tarjeta, letrero): devuelve lo leído para revisar. */
+    @PostMapping(value = "/adjunto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public java.util.Map<String, Object> adjunto(
+            @PathVariable Long evaluationId,
+            @RequestPart("files") List<MultipartFile> files,
+            @RequestPart("state") String state,
+            @RequestPart(value = "tipo", required = false) String tipo
+    ) {
+        return chatService.leerAdjunto(evaluationId, files, state, tipo);
+    }
+
+    /** Usa los datos revisados: responde la pregunta actual y deja las siguientes para cuando el chat llegue. */
+    @PostMapping("/adjunto/usar")
+    public ChatResponse usarAdjunto(
+            @PathVariable Long evaluationId,
+            @RequestBody java.util.Map<String, Object> body
+    ) {
+        return chatService.usarAdjunto(evaluationId, body);
+    }
+
     /** Responder un nodo EVIDENCE: 1 a 3 fotos por multipart (en vez de base64
      * dentro del JSON, para no inflar el payload del lado del cliente). El
      * gateway las convierte a base64 para la IA y las guarda como evidencia
