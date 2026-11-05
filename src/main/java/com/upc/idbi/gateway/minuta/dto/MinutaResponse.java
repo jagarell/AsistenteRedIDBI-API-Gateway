@@ -29,7 +29,12 @@ public record MinutaResponse(
         LocalDateTime validatedAt,
         String rejectionReason,
         String rejectedByName,
-        LocalDateTime rejectedAt
+        LocalDateTime rejectedAt,
+        String tipo,
+        int version,
+        String rubro,
+        Integer puntaje,
+        String estadoSoporte
 ) {
     public static MinutaResponse from(Minuta m) {
         return new MinutaResponse(
@@ -53,7 +58,12 @@ public record MinutaResponse(
                 m.getValidatedAt(),
                 m.getRejectionReason(),
                 m.getRejectedByName(),
-                m.getRejectedAt()
+                m.getRejectedAt(),
+                m.getTipo() == null ? "IMPLEMENTACION" : m.getTipo(),
+                m.versionOrOne(),
+                m.getRubro(),
+                m.getPuntaje(),
+                m.getEstadoSoporte()
         );
     }
 }

@@ -16,4 +16,8 @@ public record AuthenticatedUser(
     public boolean isSupervisor() {
         return role == Role.SUPERVISOR;
     }
+
+    public boolean isAdmin() {
+        return role == Role.ADMINISTRADOR;
+    }
 }

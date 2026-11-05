@@ -59,4 +59,8 @@ public class UserEntity {
 
     @Column(name = "fcm_token", length = 255)
     private String fcmToken;
+
+    /** Supervisor a cargo del técnico (Reportes › Mis técnicos). */
+    @Column(name = "supervisor_id")
+    private Long supervisorId;
 }

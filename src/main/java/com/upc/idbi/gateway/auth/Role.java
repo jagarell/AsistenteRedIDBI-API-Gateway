@@ -1,19 +1,22 @@
 package com.upc.idbi.gateway.auth;
 
 /**
- * Roles del sistema. Por diseño (ver tesis IDBI, HU12/HU15) solo se manejan
- * dos roles operativos:
+ * Roles base del sistema (0.0.7). Lo que cada rol ve y hace se configura en
+ * Equipo y accesos › Roles y permisos ({@code RolePermission}); estos son los roles base:
  * <ul>
  *     <li>{@link #TECNICO}: técnico de campo. Crea y edita minutas, y puede
  *     ver y continuar las minutas de cualquier técnico (incluso en borrador).</li>
  *     <li>{@link #SUPERVISOR}: líder TI. Además de lo anterior, es el único que
  *     puede validar una minuta completa.</li>
+ *     <li>{@link #ADMINISTRADOR}: dueño de la cuenta de la empresa. Crea las cuentas, define roles, ve todas
+ *     las minutas, configura las preguntas y reglas y revisa lo que aprendió el Asistente IA.</li>
  * </ul>
- * No existe rol administrador; el control de acceso se aplica por código.
+ * Base de datos existente: ver docs/0.0.7/migracion-0.0.7.sql (restricción del enum en users.role).
  */
 public enum Role {
     TECNICO,
-    SUPERVISOR;
+    SUPERVISOR,
+    ADMINISTRADOR;
 
     /**
      * Convierte un texto libre (p. ej. proveniente del registro) a un rol válido.
