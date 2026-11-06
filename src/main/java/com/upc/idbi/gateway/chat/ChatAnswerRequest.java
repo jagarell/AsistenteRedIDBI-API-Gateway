@@ -12,7 +12,11 @@ public record ChatAnswerRequest(
         String state,
         String answer,
         List<String> photosBase64,
-        // Cómo se consiguió la foto: "tomar" (cámara) o "subir" (galería).
-        String mode
+        // Cómo se consiguió la foto: "tomar" (cámara), "subir" (galería) o "forzar" («Guardar como correcta»).
+        String mode,
+        // Nota opcional de «Guardar como correcta».
+        String nota,
+        // Foto pendiente de «Subir después» (EV#Calientes) que se sube al final; null = nodo actual.
+        String nodeId
 ) {
 }

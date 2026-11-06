@@ -61,7 +61,9 @@ public class ChatService {
                 request.state(),
                 request.answer() == null ? "" : request.answer(),
                 List.of(),
-                request.mode()
+                request.mode(),
+                null,
+                null
         ));
     }
 
@@ -116,6 +118,13 @@ public class ChatService {
      * se guardan las versiones con las credenciales desenfocadas, nunca el
      * original. */
     public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state, String mode) {
+        return answerChatWithPhotos(evaluationId, files, state, mode, null, null);
+    }
+
+    /** 0.0.7: `mode = "forzar"` + `nota` («Guardar como correcta») y `nodeId` (foto pendiente de «Subir después»). La foto
+     * se guarda igual que siempre; la nota opcional viaja en la lectura (`_forzada`, `_nota`) y es lo único que muestra la minuta. */
+    public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state, String mode,
+                                             String nota, String nodeId) {
         List<byte[]> originals = new ArrayList<>();
         List<String> base64 = new ArrayList<>();
         try {
@@ -129,7 +138,9 @@ public class ChatService {
         }
 
         ChatResponse response = callFastApiAndPersist(evaluationId, new ChatAnswerRequest(
-                String.valueOf(evaluationId), state, "", base64, mode
+                String.valueOf(evaluationId), state, "", base64, mode,
+                nota == null || nota.isBlank() ? null : nota.trim(),
+                nodeId == null || nodeId.isBlank() ? null : nodeId
         ));
 
         if (response != null && response.lastEvidence() != null && response.validationError() == null) {

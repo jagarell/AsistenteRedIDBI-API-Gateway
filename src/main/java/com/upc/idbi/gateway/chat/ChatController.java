@@ -79,8 +79,12 @@ public class ChatController {
             @PathVariable Long evaluationId,
             @RequestPart("files") List<MultipartFile> files,
             @RequestPart("state") String state,
-            @RequestPart(value = "mode", required = false) String mode
+            @RequestPart(value = "mode", required = false) String mode,
+            // «Guardar como correcta»: mode = "forzar" y la nota opcional del técnico
+            @RequestPart(value = "nota", required = false) String nota,
+            // «Subir después»: la foto pendiente que se sube al final (EV#Calientes)
+            @RequestPart(value = "nodeId", required = false) String nodeId
     ) {
-        return chatService.answerChatWithPhotos(evaluationId, files, state, mode);
+        return chatService.answerChatWithPhotos(evaluationId, files, state, mode, nota, nodeId);
     }
 }
