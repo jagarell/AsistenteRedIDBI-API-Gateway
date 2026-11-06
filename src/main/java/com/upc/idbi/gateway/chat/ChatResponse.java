@@ -36,6 +36,8 @@ public record ChatResponse(
         // Avisos que aparecen en el chat entre la respuesta y la siguiente pregunta.
         List<Map<String, Object>> notices,
         // Respuestas que vinieron de un adjunto (llevan un clip en la burbuja).
-        List<String> attachedNodeIds
+        List<String> attachedNodeIds,
+        // Fotos obligatorias dejadas con «Subir después»: [{nodeId, name, text}]. Mientras haya, no se genera la minuta.
+        List<Map<String, Object>> pendingMandatory
 ) {
 }
