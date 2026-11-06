@@ -4,6 +4,8 @@ package com.upc.idbi.gateway.chat;
 public record ChatStartRequest(
         String evaluationId,
         String technicianName,
-        String today
+        String today,
+        /** Nombre del sistema de impresiones de la empresa (regla SISIMP); nulo = el de siempre. */
+        String sysImp
 ) {
 }

@@ -34,6 +34,7 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final EvidenceRepository evidenceRepository;
     private final EvidenceStorageService storageService;
+    private final com.upc.idbi.gateway.conocimiento.ReglaEmpresaRepository reglas;
 
     @Value("${app.fastapi.base-url}")
     private String fastApiBaseUrl;
@@ -42,7 +43,9 @@ public class ChatService {
         ChatStartRequest request = new ChatStartRequest(
                 String.valueOf(evaluationId),
                 user == null ? null : user.fullName(),
-                LocalDate.now(ZoneId.of("America/Lima")).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                LocalDate.now(ZoneId.of("America/Lima")).format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                reglas.findById("SISIMP").filter(r -> r.isActiva() && r.getValor() != null && !r.getValor().isBlank())
+                        .map(r -> r.getValor().trim()).orElse(null)
         );
 
         return restTemplate.postForObject(
