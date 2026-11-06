@@ -65,6 +65,10 @@ public class MinutaPdfService {
     @Value("${app.fastapi.base-url}")
     private String fastApiBaseUrl;
 
+    /** 0.0.7: accesos y contraseñas y datos aplicados por el Asistente IA (opcional en las pruebas que arman el servicio a mano). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.minuta.MinutaRepository minutaRepository;
+
     private final TemplateEngine templateEngine = buildTemplateEngine();
 
     public byte[] generate(Long evaluationId) {
@@ -95,6 +99,8 @@ public class MinutaPdfService {
             }
         }
 
+        mergeMinuta007(evaluationId, request);
+
         @SuppressWarnings("unchecked")
         Map<String, Object> document = restTemplate.postForObject(
                 fastApiBaseUrl + "/chat/minuta-document",
@@ -114,8 +120,10 @@ public class MinutaPdfService {
             );
         }
 
+        // Los documentos del cliente adjuntados en el Chat IA (DOC_CLIENTE) no van al anexo de fotos.
         List<Evidence> evidences =
-                evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId);
+                evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId).stream()
+                        .filter(e -> !"DOC_CLIENTE".equals(e.getEvidenceCode())).toList();
         String watermark = preview ? "VISTA PREVIA" : validatedBy == null ? "SIN VALIDAR" : null;
         return render(document, evidences, evaluationId, watermark);
     }
@@ -359,5 +367,35 @@ public class MinutaPdfService {
         TemplateEngine engine = new TemplateEngine();
         engine.setTemplateResolver(resolver);
         return engine;
+    }
+
+    /** Agrega a las ediciones lo guardado en la minuta 0.0.7: contraseñas (tabla «Accesos y contraseñas») y ubicación del router. */
+    @SuppressWarnings("unchecked")
+    private void mergeMinuta007(Long evaluationId, Map<String, Object> request) {
+        if (minutaRepository == null) {
+            return;
+        }
+        minutaRepository.findFirstByEvaluationIdOrderByIdDesc(evaluationId).ifPresent(m -> {
+            try {
+                Map<String, Object> edits = request.get("edits") instanceof Map<?, ?> e ? new java.util.HashMap<>((Map<String, Object>) e) : new java.util.HashMap<>();
+                if (m.getAccesosJson() != null && !m.getAccesosJson().isBlank()) {
+                    edits.put("cred", objectMapper.readValue(m.getAccesosJson(), new TypeReference<List<Map<String, Object>>>() {}));
+                }
+                if (m.getContentJson() != null && !m.getContentJson().isBlank()) {
+                    Map<String, Object> c = objectMapper.readValue(m.getContentJson(), new TypeReference<Map<String, Object>>() {});
+                    if (c.get("routerEncF") != null) {
+                        edits.put("routerEncF", c.get("routerEncF"));
+                    }
+                    if (c.get("routerDet") != null) {
+                        Map<String, Object> datos = edits.get("datos") instanceof Map<?, ?> d ? new java.util.HashMap<>((Map<String, Object>) d) : new java.util.HashMap<>();
+                        datos.put("routerDet", c.get("routerDet"));
+                        edits.put("datos", datos);
+                    }
+                }
+                request.put("edits", edits);
+            } catch (IOException ex) {
+                log.warn("Datos 0.0.7 de la minuta {} inválidos", m.getId(), ex);
+            }
+        });
     }
 }

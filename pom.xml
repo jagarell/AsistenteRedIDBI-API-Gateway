@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.upc.idbi</groupId>
     <artifactId>idbi-api-gateway</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>0.0.7</version>
     <name>idbi-api-gateway</name>
     <description>idbi-api-gateway</description>
     <url/>

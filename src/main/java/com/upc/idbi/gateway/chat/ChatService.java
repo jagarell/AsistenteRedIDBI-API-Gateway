@@ -34,6 +34,7 @@ public class ChatService {
     private final ObjectMapper objectMapper;
     private final EvidenceRepository evidenceRepository;
     private final EvidenceStorageService storageService;
+    private final com.upc.idbi.gateway.conocimiento.ReglaEmpresaRepository reglas;
 
     @Value("${app.fastapi.base-url}")
     private String fastApiBaseUrl;
@@ -42,7 +43,9 @@ public class ChatService {
         ChatStartRequest request = new ChatStartRequest(
                 String.valueOf(evaluationId),
                 user == null ? null : user.fullName(),
-                LocalDate.now(ZoneId.of("America/Lima")).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+                LocalDate.now(ZoneId.of("America/Lima")).format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                reglas.findById("SISIMP").filter(r -> r.isActiva() && r.getValor() != null && !r.getValor().isBlank())
+                        .map(r -> r.getValor().trim()).orElse(null)
         );
 
         return restTemplate.postForObject(
@@ -133,6 +136,79 @@ public class ChatService {
             storeEvidence(evaluationId, response, originals, files);
         }
         return response;
+    }
+
+    private static final int ADJUNTO_MAX_FILES = 3;
+    private static final long ADJUNTO_MAX_BYTES = 10L * 1024 * 1024;
+
+    /** Lee un documento del cliente con la IA. No es una evidencia de la visita: se guarda como DOC_CLIENTE y
+     * no entra en el conteo de evidencias ni en el anexo de fotos. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> leerAdjunto(Long evaluationId, List<MultipartFile> files, String state, String tipo) {
+        if (files == null || files.isEmpty() || files.size() > ADJUNTO_MAX_FILES) {
+            throw new IllegalArgumentException("Adjunta de 1 a " + ADJUNTO_MAX_FILES + " archivos");
+        }
+        List<byte[]> originals = new ArrayList<>();
+        List<String> base64 = new ArrayList<>();
+        try {
+            for (MultipartFile file : files) {
+                if (file.getSize() > ADJUNTO_MAX_BYTES) {
+                    throw new IllegalArgumentException("Cada archivo debe pesar hasta 10 MB");
+                }
+                // PDF: sin conversión en el servidor; se pide una foto del documento.
+                if ("application/pdf".equalsIgnoreCase(file.getContentType())) {
+                    return Map.of("status", "PDF");
+                }
+                byte[] bytes = file.getBytes();
+                originals.add(bytes);
+                base64.add(Base64.getEncoder().encodeToString(bytes));
+            }
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("No se pudo leer el archivo subido", ex);
+        }
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("evaluationId", String.valueOf(evaluationId));
+        body.put("state", state);
+        body.put("tipo", tipo == null || tipo.isBlank() ? null : tipo.trim());
+        body.put("imagesBase64", base64);
+        Map<String, Object> result = restTemplate.postForObject(fastApiBaseUrl + "/chat/adjunto", body, Map.class);
+        if (result != null && "OK".equals(result.get("status"))) {
+            storeClientDocument(evaluationId, originals, files, String.valueOf(result.get("tipo")));
+        }
+        return result;
+    }
+
+    /** Usa los datos revisados del adjunto y sigue igual que una respuesta normal. */
+    public ChatResponse usarAdjunto(Long evaluationId, Map<String, Object> body) {
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("evaluationId", String.valueOf(evaluationId));
+        request.put("state", body.get("state"));
+        request.put("campos", body.get("campos") == null ? List.of() : body.get("campos"));
+        ChatResponse response = restTemplate.postForObject(fastApiBaseUrl + "/chat/adjunto/usar", request, ChatResponse.class);
+        if (response != null && Boolean.TRUE.equals(response.completed())) {
+            persistAnswers(evaluationId, response.answers());
+        }
+        return response;
+    }
+
+    private void storeClientDocument(Long evaluationId, List<byte[]> originals, List<MultipartFile> files, String tipo) {
+        try {
+            for (int i = 0; i < originals.size(); i++) {
+                String stored = storageService.saveBytes(evaluationId, originals.get(i), ".jpg");
+                evidenceRepository.save(Evidence.builder()
+                        .evaluationId(evaluationId)
+                        .category("cliente")
+                        .storedFileName(stored)
+                        .originalFileName(files.get(i).getOriginalFilename())
+                        .contentType(files.get(i).getContentType() == null ? "image/jpeg" : files.get(i).getContentType())
+                        .uploadedAt(LocalDateTime.now())
+                        .evidenceCode("DOC_CLIENTE")
+                        .chatScope(tipo)
+                        .build());
+            }
+        } catch (Exception ex) {
+            log.warn("No se pudo guardar el documento del cliente de la evaluación {}", evaluationId, ex);
+        }
     }
 
     private ChatResponse callFastApiAndPersist(Long evaluationId, ChatAnswerRequest request) {

@@ -104,4 +104,48 @@ public class Minuta {
     /** Cuándo se avisó al técnico que el borrador estaba por vencer (una sola vez). */
     @Column(name = "expiry_reminder_sent_at")
     private LocalDateTime expiryReminderSentAt;
+
+    // ---- 0.0.7 ----
+
+    /** IMPLEMENTACION (visita de evaluación) o SOPORTE (soporte / incidencia). Nulo = IMPLEMENTACION. */
+    @Column(length = 20)
+    private String tipo;
+
+    /** Versión de la minuta; sube con cada actualización por el Asistente IA (historial en MinutaVersion). */
+    @Column(name = "version_num")
+    private Integer version;
+
+    @Column(length = 80)
+    private String rubro;
+
+    /** Puntaje del análisis (0–100) para la criticidad en Reportes; nulo = sin análisis. */
+    private Integer puntaje;
+
+    /** Nivel de esfuerzo: Básica, Intermedia o Compleja (Plazos de la empresa). */
+    @Column(length = 20)
+    private String esfuerzo;
+
+    /** Minutos de elaboración (desde la visita hasta enviarla), para Reportes. */
+    @Column(name = "minutos_elaboracion")
+    private Integer minutosElaboracion;
+
+    /** Accesos y contraseñas que van en la minuta: [{eq, usr, pw}] en JSON. */
+    @Column(name = "accesos_json", columnDefinition = "TEXT")
+    private String accesosJson;
+
+    /** Datos de la minuta de soporte (motivo, alcance, lo realizado, reglas S1–S4, estado final) en JSON. */
+    @Column(name = "soporte_json", columnDefinition = "TEXT")
+    private String soporteJson;
+
+    /** Estado final de soporte: OP, OPP u OBS. */
+    @Column(name = "estado_soporte", length = 5)
+    private String estadoSoporte;
+
+    public boolean isSoporte() {
+        return "SOPORTE".equals(tipo);
+    }
+
+    public int versionOrOne() {
+        return version == null ? 1 : version;
+    }
 }

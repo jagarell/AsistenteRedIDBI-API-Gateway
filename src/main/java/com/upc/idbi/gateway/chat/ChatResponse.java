@@ -34,6 +34,8 @@ public record ChatResponse(
         // app para que su miniatura tampoco muestre las credenciales.
         List<String> processedImages,
         // Avisos que aparecen en el chat entre la respuesta y la siguiente pregunta.
-        List<Map<String, Object>> notices
+        List<Map<String, Object>> notices,
+        // Respuestas que vinieron de un adjunto (llevan un clip en la burbuja).
+        List<String> attachedNodeIds
 ) {
 }

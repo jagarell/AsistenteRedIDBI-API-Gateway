@@ -70,7 +70,7 @@ public class MinutaController {
 
     /** Valida una minuta completa. Sólo supervisores. */
     @PostMapping("/{id}/validar")
-    @PreAuthorize("hasRole('SUPERVISOR')")
+    @PreAuthorize("hasAnyRole('SUPERVISOR','ADMINISTRADOR')")
     public MinutaResponse validate(
             @PathVariable Long id,
             @AuthenticationPrincipal AuthenticatedUser supervisor
@@ -80,7 +80,7 @@ public class MinutaController {
 
     /** Devuelve una minuta completa al técnico con el motivo. Sólo supervisores. */
     @PostMapping("/{id}/rechazar")
-    @PreAuthorize("hasRole('SUPERVISOR')")
+    @PreAuthorize("hasAnyRole('SUPERVISOR','ADMINISTRADOR')")
     public MinutaResponse reject(
             @PathVariable Long id,
             @RequestBody RejectRequest request,
