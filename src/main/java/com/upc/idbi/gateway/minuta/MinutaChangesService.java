@@ -31,6 +31,9 @@ public class MinutaChangesService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.notification.UserNotificationRepository notificaciones;
+
     public Map<String, Object> plan(Long id, String texto) {
         Minuta m = minutaService.get(id);
         Map<String, Object> body = new LinkedHashMap<>();
@@ -115,7 +118,17 @@ public class MinutaChangesService {
         }
         m.setAccesosJson(write(accesos));
         m.setVersion(m.versionOrOne() + 1);
-        if (m.getStatus() == MinutaStatus.COMPLETA || m.getStatus() == MinutaStatus.VALIDADA) {
+        // Doc 0.0.7 §12: si cambia el técnico, vuelve a Pendiente (hay que solicitar otra vez la validación); si cambia el supervisor o el
+        // administrador, sigue por validar (Completa) y el técnico recibe el aviso.
+        boolean gestor = user != null && (user.isSupervisor() || user.isAdmin()) && !java.util.Objects.equals(m.getTechnicianId(), user.id());
+        if (gestor) {
+            if (m.getStatus() == MinutaStatus.VALIDADA) {
+                m.setStatus(MinutaStatus.COMPLETA);
+                m.setValidatedById(null);
+                m.setValidatedByName(null);
+                m.setValidatedAt(null);
+            }
+        } else if (m.getStatus() == MinutaStatus.COMPLETA || m.getStatus() == MinutaStatus.VALIDADA) {
             m.setStatus(MinutaStatus.BORRADOR);
             m.setValidatedById(null);
             m.setValidatedByName(null);
@@ -123,6 +136,12 @@ public class MinutaChangesService {
         }
         m.setUpdatedAt(LocalDateTime.now());
         Minuta saved = repository.save(m);
+        if (gestor && notificaciones != null && saved.getTechnicianId() != null) {
+            String que = resumen.stream().filter(x -> !x.startsWith("Se mantiene") && !x.startsWith("Nueva visita")).findFirst().map(x -> ": " + x).orElse("");
+            notificaciones.save(com.upc.idbi.gateway.notification.UserNotification.builder().userId(saved.getTechnicianId()).title("Minuta actualizada")
+                    .body((user.isAdmin() ? "El administrador " : "El supervisor ") + user.fullName() + " actualizó la minuta a v" + saved.versionOrOne() + que)
+                    .type("MINUTA_ACTUALIZADA").minutaId(saved.getId()).evaluationId(saved.getEvaluationId()).createdAt(LocalDateTime.now()).build());
+        }
         if (bitacora != null) bitacora.registrar(user, saved.getId(), "editar", "Actualizó la minuta de " + saved.getClientName() + " a la v" + saved.versionOrOne() + " con el Asistente IA");
         return saved;
     }

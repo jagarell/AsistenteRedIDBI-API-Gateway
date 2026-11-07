@@ -41,6 +41,10 @@ public class UserNotification {
     @Column(name = "evaluation_id")
     private Long evaluationId;
 
+    /** Referencia a otro registro (por ejemplo la solicitud de cambio de contraseña). */
+    @Column(name = "ref_id")
+    private Long refId;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
