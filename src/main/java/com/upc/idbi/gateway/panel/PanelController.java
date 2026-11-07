@@ -34,7 +34,6 @@ public class PanelController {
     /** Meta diaria de minutas terminadas por técnico y horas que se estima que ahorra cada minuta. */
     private static final int META_DIARIA = 3;
     private static final double HORAS_POR_MINUTA = 1.5;
-    private static final double SOLES_POR_HORA = 25.0;
 
     private final MinutaRepository minutas;
     private final UserRepository users;
@@ -93,7 +92,7 @@ public class PanelController {
         out.put("metaDiaria", META_DIARIA);
         out.put("porDia", porDia);
         out.put("porEstado", Map.of("Borrador", borrador, "Rechazadas", rechazadas, "Por validar", porValidar, "Validadas", validadas));
-        out.put("ahorro", Map.of("horas", horas, "soles", horas * SOLES_POR_HORA, "solesPorHora", SOLES_POR_HORA));
+        out.put("ahorro", Map.of("horas", horas, "soles", horas * empresa.costoHora(), "solesPorHora", empresa.costoHora()));
         if (admin) {
             List<Map<String, Object>> porSup = new ArrayList<>();
             for (UserEntity s : users.findByRole(Role.SUPERVISOR)) {
@@ -230,8 +229,8 @@ public class PanelController {
         Map<String, Object> tiempos = new LinkedHashMap<>();
         tiempos.put("rubros", rubros);
         tiempos.put("horasAhorradas", horas);
-        tiempos.put("solesAhorro", horas * SOLES_POR_HORA);
-        tiempos.put("solesPorHora", SOLES_POR_HORA);
+        tiempos.put("solesAhorro", horas * empresa.costoHora());
+        tiempos.put("solesPorHora", empresa.costoHora());
         tiempos.put("metaMinutos", 120);
 
         // Alertas: cada una abre la consulta en el Asistente IA.

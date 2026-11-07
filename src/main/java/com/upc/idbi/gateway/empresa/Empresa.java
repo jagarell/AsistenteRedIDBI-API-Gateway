@@ -50,4 +50,8 @@ public class Empresa {
 
     @Column(name = "copia_ultima")
     private LocalDateTime copiaUltima;
+
+    /** «Editar plazos»: tiempos manuales por tipo de local (cómo se trabajaba antes de la app) y costo por hora del técnico. */
+    @Column(name = "plazos_json", columnDefinition = "TEXT")
+    private String plazosJson;
 }

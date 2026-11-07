@@ -148,6 +148,21 @@ public class Minuta {
     /** Falso para las minutas demo en Borrador o Pendiente que dejan de verse al pasar a producción. */
     private Boolean visible;
 
+    /** Bloqueo de edición mientras el supervisor o el administrador edita (doc 0.0.7 §12). Vence a los 30 minutos sin actividad. */
+    @Column(name = "bloqueado_por_id")
+    private Long bloqueadoPorId;
+
+    @Column(name = "bloqueado_por_nombre", length = 150)
+    private String bloqueadoPorNombre;
+
+    @Column(name = "bloqueado_desde")
+    private LocalDateTime bloqueadoDesde;
+
+    /** Hay un bloqueo vigente (no vencido). */
+    public boolean bloqueada() {
+        return bloqueadoPorId != null && bloqueadoDesde != null && bloqueadoDesde.isAfter(LocalDateTime.now().minusMinutes(30));
+    }
+
     public boolean isSoporte() {
         return "SOPORTE".equals(tipo);
     }

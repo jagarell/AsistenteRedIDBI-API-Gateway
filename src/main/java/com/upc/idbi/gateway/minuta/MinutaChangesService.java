@@ -54,6 +54,7 @@ public class MinutaChangesService {
     @Transactional
     public Minuta aplicar(Long id, List<Map<String, Object>> items, AuthenticatedUser user, Boolean nuevaVisita) {
         Minuta m = minutaService.get(id);
+        minutaService.assertNoBloqueada(m, user);
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("No hay cambios para aplicar");
         }
@@ -135,6 +136,9 @@ public class MinutaChangesService {
             m.setValidatedAt(null);
         }
         m.setUpdatedAt(LocalDateTime.now());
+        m.setBloqueadoPorId(null);
+        m.setBloqueadoPorNombre(null);
+        m.setBloqueadoDesde(null);
         Minuta saved = repository.save(m);
         if (gestor && notificaciones != null && saved.getTechnicianId() != null) {
             String que = resumen.stream().filter(x -> !x.startsWith("Se mantiene") && !x.startsWith("Nueva visita")).findFirst().map(x -> ": " + x).orElse("");
@@ -144,6 +148,35 @@ public class MinutaChangesService {
         }
         if (bitacora != null) bitacora.registrar(user, saved.getId(), "editar", "Actualizó la minuta de " + saved.getClientName() + " a la v" + saved.versionOrOne() + " con el Asistente IA");
         return saved;
+    }
+
+    @Transactional
+    public Map<String, Object> bloquear(Long id, AuthenticatedUser user) {
+        Minuta m = minutaService.get(id);
+        if (user == null || !(user.isSupervisor() || user.isAdmin())) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "Solo el supervisor o el administrador bloquean la edición");
+        }
+        if (java.util.Objects.equals(m.getTechnicianId(), user.id())) {
+            return Map.of("bloqueada", false);
+        }
+        minutaService.assertNoBloqueada(m, user);
+        m.setBloqueadoPorId(user.id());
+        m.setBloqueadoPorNombre(user.fullName());
+        m.setBloqueadoDesde(LocalDateTime.now());
+        repository.save(m);
+        return Map.of("bloqueada", true, "por", user.fullName());
+    }
+
+    @Transactional
+    public Map<String, Object> liberar(Long id, AuthenticatedUser user) {
+        Minuta m = minutaService.get(id);
+        if (m.getBloqueadoPorId() != null && user != null && (user.isAdmin() || java.util.Objects.equals(m.getBloqueadoPorId(), user.id()))) {
+            m.setBloqueadoPorId(null);
+            m.setBloqueadoPorNombre(null);
+            m.setBloqueadoDesde(null);
+            repository.save(m);
+        }
+        return Map.of("bloqueada", m.bloqueada());
     }
 
     public List<MinutaVersion> historial(Long id) {

@@ -32,6 +32,18 @@ public class MinutaChangesController {
         return MinutaResponse.from(service.aplicar(id, req.items(), user, req.nuevaVisita()));
     }
 
+    /** El supervisor o el administrador empieza a editar: el técnico ve «En edición por …» y no puede editar. */
+    @PostMapping("/bloqueo")
+    public Map<String, Object> bloquear(@PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
+        return service.bloquear(id, user);
+    }
+
+    /** Cancelar la edición. Lo libera quien lo puso o el administrador. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/bloqueo")
+    public Map<String, Object> liberar(@PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
+        return service.liberar(id, user);
+    }
+
     @GetMapping("/versiones")
     public List<MinutaVersion> versiones(@PathVariable Long id) {
         return service.historial(id);

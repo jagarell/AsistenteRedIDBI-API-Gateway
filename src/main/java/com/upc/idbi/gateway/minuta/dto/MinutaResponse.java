@@ -34,7 +34,8 @@ public record MinutaResponse(
         int version,
         String rubro,
         Integer puntaje,
-        String estadoSoporte
+        String estadoSoporte,
+        String bloqueadaPor
 ) {
     public static MinutaResponse from(Minuta m) {
         return new MinutaResponse(
@@ -63,7 +64,8 @@ public record MinutaResponse(
                 m.versionOrOne(),
                 m.getRubro(),
                 m.getPuntaje(),
-                m.getEstadoSoporte()
+                m.getEstadoSoporte(),
+                m.bloqueada() ? m.getBloqueadoPorNombre() : null
         );
     }
 }
