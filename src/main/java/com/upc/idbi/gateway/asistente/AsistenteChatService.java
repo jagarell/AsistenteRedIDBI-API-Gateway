@@ -388,8 +388,9 @@ public class AsistenteChatService {
         List<String> lineas = new ArrayList<>();
         for (com.upc.idbi.gateway.evaluation.Evaluation e : evaluations.findAll()) {
             boolean enCurso = e.getStatus() == com.upc.idbi.gateway.evaluation.EvaluationStatus.BORRADOR && !Boolean.TRUE.equals(e.getAnnulled())
+                    && (e.getChatAnswersJson() == null || e.getChatAnswersJson().isBlank())
                     && minutas.findFirstByEvaluationIdOrderByIdDesc(e.getId()).isEmpty();
-            boolean mia = e.getTechnicianName() == null || e.getTechnicianName().equalsIgnoreCase(user.fullName());
+            boolean mia = Objects.equals(e.getCreadoPorId(), user.id());
             if (!enCurso || !mia) {
                 continue;
             }

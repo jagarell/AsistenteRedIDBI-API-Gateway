@@ -43,29 +43,28 @@ public class ReportesService {
      * Evaluaciones que el técnico empezó y no terminó (estado «Borrador»): todavía no son minuta, no tienen puntaje ni PDF (doc 0.0.7 §19 y §25).
      * El técnico ve las suyas; el supervisor las de su equipo y las suyas; el administrador todas.
      */
-    List<Map<String, Object>> borradores(AuthenticatedUser user, List<UserEntity> us, boolean soloMias) {
+    public List<Map<String, Object>> borradores(AuthenticatedUser user, List<UserEntity> us, boolean soloMias) {
         if (evaluations == null) {
             return List.of();
         }
-        Set<String> nombres = new java.util.HashSet<>();
-        if (soloMias || user.role() == Role.TECNICO) {
-            nombres.add(user.fullName().toLowerCase());
-        } else if (user.role() == Role.SUPERVISOR) {
-            nombres.add(user.fullName().toLowerCase());
-            us.stream().filter(u -> Objects.equals(u.getSupervisorId(), user.id())).forEach(u -> nombres.add(u.getFullName().toLowerCase()));
+        Set<Long> ids = new java.util.HashSet<>();
+        ids.add(user.id());
+        if (!soloMias && user.role() == Role.SUPERVISOR) {
+            us.stream().filter(u -> Objects.equals(u.getSupervisorId(), user.id())).forEach(u -> ids.add(u.getId()));
         }
         boolean todos = !soloMias && user.role() == Role.ADMINISTRADOR;
         List<Map<String, Object>> out = new ArrayList<>();
         for (var e : evaluations.findAll()) {
             boolean enCurso = e.getStatus() == com.upc.idbi.gateway.evaluation.EvaluationStatus.BORRADOR && !Boolean.TRUE.equals(e.getAnnulled())
+                    && (e.getChatAnswersJson() == null || e.getChatAnswersJson().isBlank())
                     && minutas.findFirstByEvaluationIdOrderByIdDesc(e.getId()).isEmpty();
-            if (!enCurso || !(todos || (e.getTechnicianName() != null && nombres.contains(e.getTechnicianName().toLowerCase())))) {
+            if (!enCurso || !(todos || (e.getCreadoPorId() != null && ids.contains(e.getCreadoPorId())))) {
                 continue;
             }
             Map<String, Object> f = new LinkedHashMap<>();
             f.put("evaluationId", e.getId());
             f.put("local", e.getRestaurantName() == null || e.getRestaurantName().isBlank() ? "Evaluación sin nombre" : e.getRestaurantName());
-            f.put("tecnico", e.getTechnicianName());
+            f.put("tecnico", e.getCreadoPorNombre());
             f.put("avance", e.getProgress() == null ? 0 : e.getProgress());
             f.put("fecha", e.getCreatedAt() == null ? null : e.getCreatedAt().toLocalDate().toString());
             out.add(f);

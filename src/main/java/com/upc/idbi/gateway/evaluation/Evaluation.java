@@ -63,6 +63,13 @@ public class Evaluation {
      */
     private Boolean annulled;
 
+    /** Quién empezó la evaluación (técnico, supervisor o administrador). Nulo en las anteriores a esta columna. */
+    @Column(name = "creado_por_id")
+    private Long creadoPorId;
+
+    @Column(name = "creado_por_nombre", length = 150)
+    private String creadoPorNombre;
+
     /**
      * Ediciones de la minuta (JSON): datos principales, observaciones, propuesta editada y cambios pedidos en el chat.
      * Se aplican al armar el documento del PDF; no se pierden si el análisis se recalcula.

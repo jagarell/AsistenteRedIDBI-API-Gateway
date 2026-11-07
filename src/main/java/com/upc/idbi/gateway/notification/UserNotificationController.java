@@ -142,7 +142,7 @@ public class UserNotificationController {
     /** «Pedir que la termine» para una evaluación que todavía no es minuta (Borrador · sin minuta). */
     private Map<String, Object> recordatorioEvaluacion(Long evaluationId, AuthenticatedUser user) {
         var e = evaluations.findById(evaluationId).orElseThrow(() -> new IllegalArgumentException("Evaluación no encontrada"));
-        var destino = users.findAll().stream().filter(u -> u.getFullName() != null && u.getFullName().equalsIgnoreCase(e.getTechnicianName())).findFirst().orElse(null);
+        var destino = e.getCreadoPorId() == null ? null : users.findById(e.getCreadoPorId()).orElse(null);
         if (destino == null) {
             throw new IllegalArgumentException("No hay a quién avisar");
         }

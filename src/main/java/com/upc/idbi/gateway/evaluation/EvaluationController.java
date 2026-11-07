@@ -29,7 +29,8 @@ public class EvaluationController {
     }
 
     @PostMapping
-    public Evaluation createEvaluation(@RequestBody(required = false) Evaluation body) {
+    public Evaluation createEvaluation(@RequestBody(required = false) Evaluation body,
+                                       @org.springframework.security.core.annotation.AuthenticationPrincipal com.upc.idbi.gateway.security.AuthenticatedUser user) {
         // Solo se valida el formato cuando el cliente manda un nombre real —
         // el placeholder "Nueva Evaluación" (evaluación recién creada, antes
         // de que el chat pregunte el nombre del local) no pasa por acá.
@@ -49,6 +50,8 @@ public class EvaluationController {
                 .progress(0)
                 .score(0)
                 .createdAt(LocalDateTime.now())
+                .creadoPorId(user == null ? null : user.id())
+                .creadoPorNombre(user == null ? null : user.fullName())
                 .build();
 
         return repository.save(evaluation);
