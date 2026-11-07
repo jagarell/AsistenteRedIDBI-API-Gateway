@@ -38,8 +38,16 @@ public class MinutaChangesService {
     }
 
     /** Aplica los ítems del plan. Los criterios de todas las minutas nunca se aplican desde aquí. */
-    @Transactional
     public Minuta aplicar(Long id, List<Map<String, Object>> items, AuthenticatedUser user) {
+        return aplicar(id, items, user, null);
+    }
+
+    /**
+     * «Fue una nueva visita al local»: marcada, la minuta toma la fecha de la actualización y el historial dice «Nueva visita»;
+     * desmarcada (o sin dato), conserva la fecha original.
+     */
+    @Transactional
+    public Minuta aplicar(Long id, List<Map<String, Object>> items, AuthenticatedUser user, Boolean nuevaVisita) {
         Minuta m = minutaService.get(id);
         if (items == null || items.isEmpty()) {
             throw new IllegalArgumentException("No hay cambios para aplicar");
@@ -48,6 +56,14 @@ public class MinutaChangesService {
         Map<String, Object> soporte = m.isSoporte() ? read(m.getSoporteJson()) : null;
         List<Map<String, Object>> accesos = readList(m.getAccesosJson());
         List<String> resumen = new ArrayList<>();
+        if (nuevaVisita != null) {
+            if (nuevaVisita) {
+                content.put("fechaVisita", java.time.LocalDate.now().toString());
+                resumen.add("Nueva visita: la fecha de la minuta es " + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+            } else {
+                resumen.add("Se mantiene la fecha de la visita");
+            }
+        }
         for (Map<String, Object> it : items) {
             String k = String.valueOf(it.get("k"));
             String t = String.valueOf(it.getOrDefault("t", ""));

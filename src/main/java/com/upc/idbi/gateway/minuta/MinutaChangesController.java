@@ -29,7 +29,7 @@ public class MinutaChangesController {
 
     @PostMapping("/cambios/aplicar")
     public MinutaResponse aplicar(@PathVariable Long id, @RequestBody AplicarRequest req, @AuthenticationPrincipal AuthenticatedUser user) {
-        return MinutaResponse.from(service.aplicar(id, req.items(), user));
+        return MinutaResponse.from(service.aplicar(id, req.items(), user, req.nuevaVisita()));
     }
 
     @GetMapping("/versiones")
@@ -40,6 +40,6 @@ public class MinutaChangesController {
     public record PlanRequest(String texto) {
     }
 
-    public record AplicarRequest(List<Map<String, Object>> items) {
+    public record AplicarRequest(List<Map<String, Object>> items, Boolean nuevaVisita) {
     }
 }
