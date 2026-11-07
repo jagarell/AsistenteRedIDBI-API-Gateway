@@ -28,6 +28,8 @@ public class MinutaChangesService {
     private final MinutaVersionRepository versions;
     private final FastApiClient fastApi;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
     public Map<String, Object> plan(Long id, String texto) {
         Minuta m = minutaService.get(id);
@@ -120,7 +122,9 @@ public class MinutaChangesService {
             m.setValidatedAt(null);
         }
         m.setUpdatedAt(LocalDateTime.now());
-        return repository.save(m);
+        Minuta saved = repository.save(m);
+        if (bitacora != null) bitacora.registrar(user, saved.getId(), "editar", "Actualizó la minuta de " + saved.getClientName() + " a la v" + saved.versionOrOne() + " con el Asistente IA");
+        return saved;
     }
 
     public List<MinutaVersion> historial(Long id) {

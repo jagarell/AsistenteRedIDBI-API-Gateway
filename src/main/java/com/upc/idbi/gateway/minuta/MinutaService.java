@@ -17,6 +17,8 @@ public class MinutaService {
 
     private final MinutaRepository repository;
     private final MinutaNotifier notifier;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.empresa.EmpresaService empresa;
 
     /**
      * Lista minutas. Todas son visibles para técnicos y supervisores (incluidas
@@ -54,6 +56,7 @@ public class MinutaService {
                 .summary(request.summary())
                 .topologyJson(request.topologyJson())
                 .contentJson(request.contentJson())
+                .etapa(empresa != null && empresa.enProduccion() ? "produccion" : null)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();

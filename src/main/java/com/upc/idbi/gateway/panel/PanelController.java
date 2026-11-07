@@ -36,6 +36,7 @@ public class PanelController {
 
     private final MinutaRepository minutas;
     private final UserRepository users;
+    private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMINISTRADOR','SUPERVISOR')")
@@ -49,7 +50,7 @@ public class PanelController {
                 .sorted(Comparator.comparing(UserEntity::getFullName, String.CASE_INSENSITIVE_ORDER)).toList();
         Set<Long> equipo = tecnicos.stream().map(UserEntity::getId).collect(Collectors.toSet());
 
-        List<Minuta> todas = minutas.findAllByOrderByCreatedAtDesc().stream()
+        List<Minuta> todas = empresa.contadas(minutas.findAllByOrderByCreatedAtDesc()).stream()
                 .filter(m -> admin || (m.getTechnicianId() != null && equipo.contains(m.getTechnicianId())))
                 .toList();
         List<Minuta> enRango = todas.stream().filter(m -> m.getCreatedAt() != null && !m.getCreatedAt().isBefore(desde)).toList();

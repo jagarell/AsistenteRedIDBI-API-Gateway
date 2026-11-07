@@ -87,6 +87,7 @@ table.annex p { margin: 0 0 1.4mm 0; }
   </tr></table>
 </div>
 
+<div class="brand" style="margin:0 0 3mm 0;"><img th:if="${empresaLogo}" th:src="${empresaLogo}" style="height:46px; vertical-align:middle; margin-right:3mm;"/><b style="font-size:12pt; color:#22286b; vertical-align:middle;" th:text="${empresaNombre}">IDBI</b></div>
 <h1 th:text="${doc.title}">MINUTA TÉCNICA DE RED</h1>
 <div class="subtitle" th:text="${doc.subtitle}">Local</div>
 <p class="intro" th:text="${doc.intro}">Intro</p>
