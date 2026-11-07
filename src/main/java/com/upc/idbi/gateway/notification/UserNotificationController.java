@@ -105,6 +105,7 @@ public class UserNotificationController {
                     o.put("tipo", n.getType());
                     o.put("minutaId", n.getMinutaId());
                     o.put("evaluationId", n.getEvaluationId());
+                    o.put("refId", n.getRefId());
                     o.put("leida", n.getReadAt() != null);
                     o.put("fecha", n.getCreatedAt() == null ? "" : n.getCreatedAt().toString());
                     return o;
