@@ -21,6 +21,9 @@ public class ReglasController {
 
     private final ReglaEmpresaRepository reglas;
     private final PreguntaFlujoRepository preguntas;
+    private final com.upc.idbi.gateway.common.FastApiClient fastApi;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
     /** SISIMP primero y luego por código. */
     @GetMapping("/api/reglas")
@@ -65,7 +68,43 @@ public class ReglasController {
     /** Preguntas que el administrador o el Asistente IA agregaron al flujo (las base viven en el motor del Chat IA). */
     @GetMapping("/api/preguntas")
     public List<PreguntaFlujo> preguntas() {
-        return preguntas.findAll().stream().sorted(Comparator.comparing(PreguntaFlujo::getId)).toList();
+        return ordenadas();
+    }
+
+    private List<PreguntaFlujo> ordenadas() {
+        return preguntas.findAll().stream()
+                .sorted(Comparator.comparing((PreguntaFlujo p) -> p.getSeccionId() == null ? "" : p.getSeccionId())
+                        .thenComparing(p -> p.getOrden() == null ? Integer.MAX_VALUE : p.getOrden()).thenComparing(PreguntaFlujo::getId))
+                .toList();
+    }
+
+    /**
+     * Subir o bajar una pregunta agregada dentro de su sección (doc 0.0.7 §11). {@code dir}: «arriba» o «abajo». Mover dos veces en
+     * sentido contrario la deja donde estaba (Deshacer). Las preguntas base viven en el motor del Chat IA y no se reordenan aquí.
+     */
+    @PutMapping("/api/preguntas/{id}/mover")
+    @org.springframework.transaction.annotation.Transactional
+    public List<PreguntaFlujo> mover(@PathVariable String id, @RequestBody Map<String, Object> b, @AuthenticationPrincipal AuthenticatedUser me) {
+        PreguntaFlujo p = preguntas.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No existe esa pregunta."));
+        List<PreguntaFlujo> seccion = new ArrayList<>(ordenadas().stream().filter(x -> Objects.equals(x.getSeccionId(), p.getSeccionId())).toList());
+        for (int i = 0; i < seccion.size(); i++) seccion.get(i).setOrden(i + 1);
+        int i = seccion.indexOf(p);
+        int j = "arriba".equals(texto(b, "dir")) ? i - 1 : i + 1;
+        if (j < 0 || j >= seccion.size()) {
+            preguntas.saveAll(seccion);
+            return ordenadas();
+        }
+        Collections.swap(seccion, i, j);
+        for (int k = 0; k < seccion.size(); k++) seccion.get(k).setOrden(k + 1);
+        preguntas.saveAll(seccion);
+        if (bitacora != null) bitacora.registrar(me, null, "empresa", id + " ahora va en la sección " + p.getSeccionId() + ", posición " + (j + 1));
+        return ordenadas();
+    }
+
+    /** Todas las preguntas del Chat IA por sección, en el orden del motor (solo lectura); el Mapa de nodos usa lo mismo. */
+    @GetMapping("/api/flujo/catalogo")
+    public Map<String, Object> catalogo() {
+        return fastApi.get("/chat/flujo/catalogo");
     }
 
     private static String texto(Map<String, Object> b, String k) {

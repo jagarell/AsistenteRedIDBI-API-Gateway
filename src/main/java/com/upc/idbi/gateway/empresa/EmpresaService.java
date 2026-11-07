@@ -23,6 +23,41 @@ public class EmpresaService {
         return repo.findById(1L).orElseGet(() -> repo.save(Empresa.builder().id(1L).nombre(NOMBRE_POR_DEFECTO).copiaFrecuencia("off").copiaHora(2).copiaIncluyeFotos(false).build()));
     }
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+    public static final double COSTO_HORA_POR_DEFECTO = 25.0;
+
+    /** Plazos de la empresa: minutos manuales por rubro (antes de la app), días por nivel de esfuerzo y costo por hora. */
+    @SuppressWarnings("unchecked")
+    public java.util.Map<String, Object> plazos() {
+        java.util.Map<String, Object> p = new java.util.LinkedHashMap<>();
+        try {
+            String j = get().getPlazosJson();
+            if (j != null && !j.isBlank()) {
+                p.putAll(JSON.readValue(j, java.util.Map.class));
+            }
+        } catch (Exception ignored) {
+            // se usan los valores por defecto
+        }
+        p.putIfAbsent("rubros", new java.util.LinkedHashMap<String, Object>(java.util.Map.of("Restaurante", 180, "Fast food", 150, "Retail", 120, "Otro", 150)));
+        p.putIfAbsent("costoHora", COSTO_HORA_POR_DEFECTO);
+        return p;
+    }
+
+    public double costoHora() {
+        Object c = plazos().get("costoHora");
+        return c instanceof Number n && n.doubleValue() > 0 ? n.doubleValue() : COSTO_HORA_POR_DEFECTO;
+    }
+
+    public synchronized void guardarPlazos(java.util.Map<String, Object> p) {
+        try {
+            Empresa e = get();
+            e.setPlazosJson(JSON.writeValueAsString(p));
+            repo.save(e);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new IllegalArgumentException("Plazos no válidos");
+        }
+    }
+
     public boolean enProduccion() {
         return get().getProduccionDesde() != null;
     }

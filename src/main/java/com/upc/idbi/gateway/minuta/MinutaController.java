@@ -52,7 +52,7 @@ public class MinutaController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         Minuta m = service.create(request, user);
-        bitacora.registrar(user, m.getId(), "crear", "Creó la minuta de " + m.getClientName());
+        bitacora.registrar(user, m.getId(), "crear", "Creó la minuta de " + m.getClientName() + " con el Chat IA (preguntas guiadas)");
         return MinutaResponse.from(m);
     }
 
@@ -62,8 +62,25 @@ public class MinutaController {
             @Valid @RequestBody MinutaRequest request,
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
+        Minuta antes = service.get(id);
+        String nombre0 = antes.getClientName(), dir0 = antes.getAddress(), contacto0 = antes.getContactName() + "|" + antes.getContactPhone();
+        String notas0 = antes.getNotes(), topo0 = antes.getTopologyJson(), cont0 = antes.getContentJson();
         Minuta m = service.update(id, request, user);
-        bitacora.registrar(user, id, "editar", "Editó la minuta de " + m.getClientName());
+        java.util.List<String> partes = new java.util.ArrayList<>();
+        if (!java.util.Objects.equals(nombre0, m.getClientName()) || !java.util.Objects.equals(dir0, m.getAddress())
+                || !java.util.Objects.equals(contacto0, m.getContactName() + "|" + m.getContactPhone())) {
+            partes.add("Datos del local: nombre, razón social, RUC, dirección o contacto");
+        }
+        if (!java.util.Objects.equals(notas0, m.getNotes())) {
+            partes.add("Observaciones del técnico, viabilidad o método de pago");
+        }
+        if (!java.util.Objects.equals(topo0, m.getTopologyJson())) {
+            partes.add("Topología de red: cambió equipos o conexiones");
+        }
+        if (!java.util.Objects.equals(cont0, m.getContentJson())) {
+            partes.add("Propuesta técnica: equipamiento, diagnóstico o propuesta recomendada");
+        }
+        bitacora.registrar(user, id, "editar", "Editó la minuta de " + m.getClientName() + (partes.isEmpty() ? "" : " — " + String.join("; ", partes)));
         return MinutaResponse.from(m);
     }
 

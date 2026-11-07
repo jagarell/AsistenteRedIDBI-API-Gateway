@@ -200,6 +200,7 @@ public class MinutaService {
 
     /** Solo el técnico edita, y solo en BORRADOR (también cuando el supervisor la devolvió). El supervisor aprueba o rechaza, no edita. */
     public void assertCanEdit(Minuta minuta, AuthenticatedUser editor) {
+        assertNoBloqueada(minuta, editor);
         if (editor != null && editor.isSupervisor()) {
             throw new IllegalArgumentException("El supervisor no edita las minutas: puede validarlas o rechazarlas");
         }
@@ -208,6 +209,14 @@ public class MinutaService {
         }
         if (minuta.getStatus() == MinutaStatus.COMPLETA) {
             throw new IllegalArgumentException("La minuta está completa y en revisión: espera la respuesta del supervisor");
+        }
+    }
+
+    /** Mientras el supervisor o el administrador edita la minuta, nadie más puede editarla (doc 0.0.7 §12). */
+    public void assertNoBloqueada(Minuta minuta, AuthenticatedUser editor) {
+        if (minuta.bloqueada() && (editor == null || !java.util.Objects.equals(minuta.getBloqueadoPorId(), editor.id()))) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.LOCKED,
+                    "En edición por " + minuta.getBloqueadoPorNombre() + ": no puedes editarla hasta que aplique o cancele los cambios");
         }
     }
 

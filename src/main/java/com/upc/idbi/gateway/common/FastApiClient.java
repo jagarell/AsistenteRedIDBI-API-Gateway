@@ -25,6 +25,10 @@ public class FastApiClient {
     @Value("${app.fastapi.base-url}")
     private String baseUrl;
 
+    public Map<String, Object> get(String path) {
+        return restTemplate.exchange(baseUrl + path, HttpMethod.GET, null, MAP).getBody();
+    }
+
     public Map<String, Object> post(String path, Object body) {
         return restTemplate.exchange(baseUrl + path, HttpMethod.POST, new HttpEntity<>(body), MAP).getBody();
     }

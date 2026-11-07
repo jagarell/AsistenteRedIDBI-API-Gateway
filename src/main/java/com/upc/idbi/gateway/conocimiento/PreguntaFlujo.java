@@ -56,4 +56,7 @@ public class PreguntaFlujo {
 
     @Column(name = "creada_en")
     private LocalDateTime creadaEn;
+
+    /** Posición dentro de su sección (las preguntas agregadas se pueden subir o bajar). */
+    private Integer orden;
 }

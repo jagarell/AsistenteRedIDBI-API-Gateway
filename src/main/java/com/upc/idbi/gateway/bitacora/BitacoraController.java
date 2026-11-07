@@ -47,7 +47,10 @@ public class BitacoraController {
         return repo.findTop200ByOrderByTsDesc().stream().map(BitacoraController::fila).toList();
     }
 
-    /** Resumen de una minuta: quién la creó, la rechazó (con motivo), la validó y quién la editó en las últimas 48 h. */
+    /**
+     * Bitácora de la minuta (doc 0.0.7 §24): resumen (creada por, con qué, estado, rechazada por y quién la corrigió, validada por),
+     * quiénes la editaron en las últimas 48 horas e historial con el detalle en palabras simples.
+     */
     @GetMapping("/api/minutas/{id}/bitacora")
     public Map<String, Object> resumen(@PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
         Minuta m = minutas.findById(id).orElse(null);
@@ -58,11 +61,36 @@ public class BitacoraController {
         LocalDateTime corte = LocalDateTime.now().minusHours(48);
         Map<String, Long> editores = new LinkedHashMap<>();
         ev.stream().filter(b -> "editar".equals(b.getTipo()) && b.getTs().isAfter(corte)).forEach(b -> editores.merge(b.getUsuarioNombre(), 1L, Long::sum));
+        DateTimeFormatter f = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+
+        Bitacora crear = ev.stream().filter(b -> "crear".equals(b.getTipo())).reduce((x, y) -> y).orElse(null);
+        String herramienta = crear != null && crear.getAccion() != null && crear.getAccion().contains("Asistente IA") ? "Asistente IA" : "Chat IA";
+        // Quién la corrigió después de un rechazo: el primer «Solicitó la validación» posterior al rechazo.
+        String corregidaPor = null;
+        String corregidaEn = null;
+        if (m.getRejectedAt() != null) {
+            for (int i = ev.size() - 1; i >= 0; i--) {
+                Bitacora b = ev.get(i);
+                if ("solicitar".equals(b.getTipo()) && b.getTs().isAfter(m.getRejectedAt())) {
+                    corregidaPor = b.getUsuarioNombre();
+                    corregidaEn = b.getTs().format(f);
+                    break;
+                }
+            }
+        }
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("creadaPor", m.getTechnicianName());
+        r.put("creadaEn", m.getCreatedAt() == null ? null : m.getCreatedAt().format(f));
+        r.put("herramienta", herramienta);
+        r.put("estado", com.upc.idbi.gateway.reportes.ReportesService.estadoDe(m));
+        r.put("version", m.versionOrOne());
         r.put("rechazadaPor", m.getRejectedByName());
+        r.put("rechazadaEn", m.getRejectedAt() == null ? null : m.getRejectedAt().format(f));
         r.put("motivo", m.getRejectionReason());
+        r.put("corregidaPor", corregidaPor);
+        r.put("corregidaEn", corregidaEn);
         r.put("validadaPor", m.getValidatedByName());
+        r.put("validadaEn", m.getValidatedAt() == null ? null : m.getValidatedAt().format(f));
         r.put("editores48h", editores);
         r.put("eventos", ev.stream().map(BitacoraController::fila).toList());
         return r;
