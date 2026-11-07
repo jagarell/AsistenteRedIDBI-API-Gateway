@@ -37,15 +37,13 @@ public class AsistenteController {
         return chat.redactar(req, user);
     }
 
-    /** Reporte de minutas del periodo en CSV (se abre en Excel). Técnico: lo suyo; supervisor: su equipo; administrador: todo. */
-    @GetMapping(value = "/api/asistente/reporte.csv", produces = "text/csv;charset=UTF-8")
-    public org.springframework.http.ResponseEntity<byte[]> reporteCsv(@org.springframework.web.bind.annotation.RequestParam String desde,
-                                                                      @org.springframework.web.bind.annotation.RequestParam String hasta,
-                                                                      @AuthenticationPrincipal AuthenticatedUser user) {
-        String csv = chat.reporteCsv(user, java.time.LocalDate.parse(desde), java.time.LocalDate.parse(hasta));
+    /** Reporte de minutas en Excel (.xlsx) según la consulta del Asistente IA. Respeta el rol: técnico lo suyo, supervisor su equipo, administrador todo. */
+    @PostMapping(value = "/api/asistente/reporte.xlsx")
+    public org.springframework.http.ResponseEntity<byte[]> reporteXlsx(@RequestBody Map<String, Object> consulta, @AuthenticationPrincipal AuthenticatedUser user) {
         return org.springframework.http.ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename=\"reporte-minutas-" + desde + "_" + hasta + ".csv\"")
-                .body(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                .header("Content-Disposition", "attachment; filename=\"reporte-minutas.xlsx\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(chat.reporteXlsx(user, consulta));
     }
 
     @GetMapping("/api/aprendizaje/hoy")

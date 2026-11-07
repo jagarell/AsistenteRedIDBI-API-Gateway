@@ -15,6 +15,7 @@ import com.upc.idbi.gateway.minuta.MinutaChangesService;
 import com.upc.idbi.gateway.minuta.MinutaRepository;
 import com.upc.idbi.gateway.minuta.MinutaStatus;
 import com.upc.idbi.gateway.minuta.MinutaVersionRepository;
+import com.upc.idbi.gateway.reportes.ReportesService;
 import com.upc.idbi.gateway.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class AsistenteChatService {
     private static final Pattern PENDIENTES = Pattern.compile("pendientes?|qu[eé] me falta|qu[eé] tengo", Pattern.CASE_INSENSITIVE);
     private static final Pattern REPORTE = Pattern.compile("\\b(reporte|informe|eficiencia|productividad)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONSULTA = Pattern.compile("fecha|cu[aá]ndo|observaci|recomendaci|historial|estado|t[eé]cnico|versi[oó]n|qu[eé] (se )?(vio|encontr)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SEGUIMIENTO = Pattern.compile("^(solo|sin|no de|de |del |ahora|tambien|ademas|excepto|menos)|mes anterior|mes pasado");
     private static final Set<String> VACIAS = Set.of("ejemplo", "local", "restaurante", "cocina", "minuta", "cliente", "grupo");
 
     private final MinutaRepository minutas;
@@ -98,11 +100,14 @@ public class AsistenteChatService {
             }
             return r;
         }
+        if (req.get("reporte") instanceof Map<?, ?> prev && !prev.isEmpty() && SEGUIMIENTO.matcher(norm(texto)).find()) {
+            return reporte(texto, req, user, visibles);
+        }
         if (POR_VALIDAR.matcher(texto).find()) {
             return porValidar(user, visibles);
         }
         if (REPORTE.matcher(texto).find()) {
-            return reporte(texto, user, visibles);
+            return reporte(texto, req, user, visibles);
         }
         if (PENDIENTES.matcher(texto).find()) {
             return pendientes(user, visibles);
@@ -372,38 +377,209 @@ public class AsistenteChatService {
         return out(b);
     }
 
-    private Map<String, Object> reporte(String texto, AuthenticatedUser user, List<Minuta> visibles) {
-        LocalDate[] r = periodo(texto);
-        List<Minuta> base = alcance(user, visibles).stream()
-                .filter(m -> m.getCreatedAt() != null && !m.getCreatedAt().toLocalDate().isBefore(r[0]) && !m.getCreatedAt().toLocalDate().isAfter(r[1])).toList();
-        Map<String, Object> b = bloque("reporte", "Reporte " + r[0].format(DMY) + " – " + r[1].format(DMY),
-                base.size() + " minutas en el periodo.");
-        List<List<String>> filas = new ArrayList<>();
-        Map<String, List<Minuta>> porTec = base.stream().collect(Collectors.groupingBy(m -> firstNonBlank(m.getTechnicianName(), "Sin técnico"), TreeMap::new, Collectors.toList()));
-        boolean verTecnicos = user.role() != Role.TECNICO;
-        if (verTecnicos) {
-            porTec.forEach((t, l) -> filas.add(List.of(t, resumen(l))));
+    // ---------------------------------------------------------------- reportes (doc 0.0.7 §50)
+
+    private static final Map<String, List<String>> ESTADOS = new LinkedHashMap<>();
+
+    static {
+        ESTADOS.put("incomplet", List.of("Pendiente", "En revisión"));
+        ESTADOS.put("borrador", List.of("Pendiente"));
+        ESTADOS.put("pendiente", List.of("Pendiente"));
+        ESTADOS.put("por validar", List.of("Completa"));
+        ESTADOS.put("completa", List.of("Completa"));
+        ESTADOS.put("en revision", List.of("En revisión"));
+        ESTADOS.put("rechazad", List.of("En revisión"));
+        ESTADOS.put("validada", List.of("Validada"));
+    }
+
+    private static final String[] MESES = {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+
+    /** Interpreta el pedido de reporte y, si ya había uno, lo ajusta sin repetir todo («solo el mes anterior», «sin octubre», «de María»). */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> reporte(String texto, Map<String, Object> req, AuthenticatedUser user, List<Minuta> visibles) {
+        Map<String, Object> c = new LinkedHashMap<>();
+        boolean seguimiento = req.get("reporte") instanceof Map<?, ?> m && !m.isEmpty();
+        if (seguimiento) {
+            c.putAll((Map<String, Object>) req.get("reporte"));
         }
-        filas.add(0, List.of(verTecnicos ? "Total" : "Tus minutas", resumen(base)));
-        b.put("filas", filas);
-        b.put("desde", r[0].toString());
-        b.put("hasta", r[1].toString());
-        if (verTecnicos) {
-            b.put("acciones", List.of(accion("descargar_reporte", "Descargar en Excel", true, Map.of("desde", r[0].toString(), "hasta", r[1].toString()))));
+        String s = norm(texto).replace("setiembre", "septiembre");
+        // periodo
+        List<String> excluir = new ArrayList<>(c.get("excluir") instanceof List<?> l ? l.stream().map(String::valueOf).toList() : List.of());
+        Matcher neg = Pattern.compile("(?:sin|no de|excepto|menos|salvo)\\s+(?:el mes de\\s+|el mes\\s+|las de\\s+)?(" + String.join("|", MESES) + ")").matcher(s);
+        boolean excluyo = false;
+        while (neg.find()) {
+            int i = Arrays.asList(MESES).indexOf(neg.group(1));
+            excluir.add(java.time.YearMonth.of(LocalDate.now().getYear(), i + 1).toString());
+            excluyo = true;
+        }
+        LocalDate[] r = excluyo ? null : periodoOpt(s);
+        if (r != null) {
+            c.put("desde", r[0].toString());
+            c.put("hasta", r[1].toString());
+            excluir.clear();
+        }
+        if (c.get("desde") == null) {
+            LocalDate hoy = LocalDate.now();
+            c.put("desde", hoy.withDayOfMonth(1).toString());
+            c.put("hasta", hoy.toString());
+        }
+        c.put("excluir", excluir);
+        // estado
+        List<String> estados = null;
+        for (var e : ESTADOS.entrySet()) {
+            if (s.contains(e.getKey())) {
+                estados = e.getValue();
+                break;
+            }
+        }
+        if (estados != null) {
+            c.put("estados", estados);
+            c.put("riesgo", false);
+        }
+        if (s.contains("en riesgo") || s.contains("riesgo")) {
+            c.put("riesgo", true);
+            c.put("estados", List.of());
+        }
+        // persona (técnico o supervisor)
+        if (user.role() != Role.TECNICO) {
+            String persona = personaDe(s);
+            if (persona != null) {
+                c.put("persona", persona);
+            }
+        }
+        List<Minuta> filas = filtrar(c, user, visibles);
+        Map<String, Object> b = bloque("reporte", "Reporte · " + filas.size() + (filas.size() == 1 ? " minuta" : " minutas"),
+                filas.isEmpty() ? "No encontré minutas con esos filtros." : (seguimiento ? "Actualicé el reporte: " : "") + descripcion(c) + ".");
+        Map<String, Object> tabla = new LinkedHashMap<>();
+        tabla.put("columnas", List.of("Local", "Técnico", "Supervisor", "Estado", "Puntaje", "Fecha"));
+        Map<Long, String> sup = supervisores();
+        tabla.put("filas", filas.stream().limit(40).map(m -> List.<Object>of(str(m.getClientName()), str(m.getTechnicianName()),
+                sup.getOrDefault(m.getTechnicianId(), "—"), ReportesService.estadoDe(m), m.getPuntaje() == null ? "—" : m.getPuntaje() + " %", fecha(m))).toList());
+        b.put("tabla", tabla);
+        b.put("consulta", c);
+        List<Map<String, Object>> acc = new ArrayList<>();
+        if (!filas.isEmpty()) {
+            acc.add(accion("descargar_reporte", "Descargar Excel", true, Map.of("consulta", c)));
+        }
+        acc.add(accion("ver_reportes", "Ver en Reportes", false, Map.of()));
+        b.put("acciones", acc);
+        if (filas.size() > 40) {
+            b.put("avisos", List.of("Se muestran las primeras 40; el Excel trae las " + filas.size() + "."));
         }
         return out(b);
     }
 
-    /** CSV (lo abre Excel) con una fila por minuta del periodo, según el alcance del rol. */
-    public String reporteCsv(AuthenticatedUser user, LocalDate desde, LocalDate hasta) {
-        List<Minuta> base = alcance(user, visibles(user)).stream()
-                .filter(m -> m.getCreatedAt() != null && !m.getCreatedAt().toLocalDate().isBefore(desde) && !m.getCreatedAt().toLocalDate().isAfter(hasta)).toList();
-        StringBuilder sb = new StringBuilder("﻿Fecha;Local;Técnico;Tipo;Estado;Versión\n");
-        for (Minuta m : base) {
-            sb.append(fecha(m)).append(';').append(csv(m.getClientName())).append(';').append(csv(m.getTechnicianName())).append(';')
-                    .append(m.isSoporte() ? "Soporte" : "Implementación").append(';').append(etiqueta(m)).append(';').append(m.versionOrOne()).append('\n');
+    private String descripcion(Map<String, Object> c) {
+        List<String> p = new ArrayList<>();
+        if (c.get("riesgo") == Boolean.TRUE) {
+            p.add("en riesgo (menos de 60 %, sin validar)");
+        } else if (c.get("estados") instanceof List<?> l && !l.isEmpty()) {
+            p.add(String.join(" y ", l.stream().map(x -> String.valueOf(x).toLowerCase()).toList()));
         }
-        return sb.toString();
+        p.add("del " + LocalDate.parse(str(c.get("desde"))).format(DMY) + " al " + LocalDate.parse(str(c.get("hasta"))).format(DMY));
+        if (c.get("excluir") instanceof List<?> l && !l.isEmpty()) {
+            p.add("sin " + l.stream().map(x -> MESES[java.time.YearMonth.parse(String.valueOf(x)).getMonthValue() - 1]).collect(Collectors.joining(", ")));
+        }
+        if (!str(c.get("persona")).isBlank()) {
+            p.add("de " + c.get("persona"));
+        }
+        return String.join(" · ", p);
+    }
+
+    /** Minutas del alcance del rol que cumplen la consulta (periodo, meses excluidos, estado, riesgo y persona). */
+    @SuppressWarnings("unchecked")
+    private List<Minuta> filtrar(Map<String, Object> c, AuthenticatedUser user, List<Minuta> visibles) {
+        LocalDate d = LocalDate.parse(str(c.get("desde"))), h = LocalDate.parse(str(c.get("hasta")));
+        Set<String> estados = c.get("estados") instanceof List<?> l ? l.stream().map(String::valueOf).collect(Collectors.toSet()) : Set.of();
+        Set<String> excl = c.get("excluir") instanceof List<?> l ? l.stream().map(String::valueOf).collect(Collectors.toSet()) : Set.of();
+        String persona = str(c.get("persona"));
+        Set<Long> delEquipo = new HashSet<>();
+        if (!persona.isBlank()) {
+            users.findAll().stream().filter(u -> norm(u.getFullName()).equals(norm(persona))).findFirst().ifPresent(u -> {
+                delEquipo.add(u.getId());
+                if (u.getRole() == Role.SUPERVISOR) {
+                    users.findByRole(Role.TECNICO).stream().filter(t -> Objects.equals(t.getSupervisorId(), u.getId())).forEach(t -> delEquipo.add(t.getId()));
+                }
+            });
+        }
+        return alcance(user, visibles).stream()
+                .filter(m -> m.getCreatedAt() != null && !m.getCreatedAt().toLocalDate().isBefore(d) && !m.getCreatedAt().toLocalDate().isAfter(h))
+                .filter(m -> !excl.contains(java.time.YearMonth.from(m.getCreatedAt()).toString()))
+                .filter(m -> estados.isEmpty() || estados.contains(ReportesService.estadoDe(m)))
+                .filter(m -> c.get("riesgo") != Boolean.TRUE || (!"Validada".equals(ReportesService.estadoDe(m)) && "Riesgo".equals(ReportesService.criticidadDe(m.getPuntaje()))))
+                .filter(m -> persona.isBlank() || delEquipo.contains(m.getTechnicianId()))
+                .toList();
+    }
+
+    private Map<Long, String> supervisores() {
+        Map<Long, UserEntity> byId = users.findAll().stream().collect(Collectors.toMap(UserEntity::getId, u -> u));
+        Map<Long, String> out = new HashMap<>();
+        byId.values().forEach(u -> out.put(u.getId(), u.getSupervisorId() == null || byId.get(u.getSupervisorId()) == null ? "—" : byId.get(u.getSupervisorId()).getFullName()));
+        return out;
+    }
+
+    /** Nombre completo del técnico o supervisor al que se refiere el texto (todos sus nombres, o un apellido/nombre único). */
+    private String personaDe(String s) {
+        List<UserEntity> todos = users.findAll().stream().filter(u -> u.getRole() != Role.ADMINISTRADOR).toList();
+        for (UserEntity u : todos) {
+            String[] t = norm(u.getFullName()).split("\\s+");
+            if (t.length >= 2 && Arrays.stream(t).allMatch(s::contains)) {
+                return u.getFullName();
+            }
+        }
+        for (UserEntity u : todos) {
+            for (String t : norm(u.getFullName()).split("\\s+")) {
+                long coincide = todos.stream().filter(x -> norm(x.getFullName()).contains(t)).count();
+                if (t.length() >= 4 && coincide == 1 && Pattern.compile("\\b" + t + "\\b").matcher(s).find()) {
+                    return u.getFullName();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static LocalDate[] periodoOpt(String s) {
+        LocalDate hoy = LocalDate.now();
+        if (s.contains("mes anterior") || s.contains("mes pasado")) {
+            LocalDate d = hoy.minusMonths(1).withDayOfMonth(1);
+            return new LocalDate[]{d, d.withDayOfMonth(d.lengthOfMonth())};
+        }
+        if (s.contains("este mes") || s.contains("mes actual")) {
+            return new LocalDate[]{hoy.withDayOfMonth(1), hoy};
+        }
+        for (int i = 0; i < MESES.length; i++) {
+            if (s.contains(MESES[i])) {
+                LocalDate d = LocalDate.of(hoy.getYear(), i + 1, 1);
+                return new LocalDate[]{d, d.withDayOfMonth(d.lengthOfMonth())};
+            }
+        }
+        if (s.contains("ayer")) {
+            return new LocalDate[]{hoy.minusDays(1), hoy.minusDays(1)};
+        }
+        if (s.contains("hoy")) {
+            return new LocalDate[]{hoy, hoy};
+        }
+        if (s.contains("semana")) {
+            return new LocalDate[]{hoy.minusDays(6), hoy};
+        }
+        Matcher n = Pattern.compile("ultimos? (\\d{1,3}) dias").matcher(s);
+        if (n.find()) {
+            return new LocalDate[]{hoy.minusDays(Integer.parseInt(n.group(1)) - 1L), hoy};
+        }
+        return null;
+    }
+
+    /** Excel (.xlsx) con título, fecha de generación, encabezados con filtro y una fila por minuta; el puntaje va como número. */
+    public byte[] reporteXlsx(AuthenticatedUser user, Map<String, Object> consulta) {
+        List<Minuta> filas = filtrar(consulta, user, visibles(user));
+        Map<Long, String> sup = supervisores();
+        List<List<Object>> datos = new ArrayList<>();
+        for (Minuta m : filas) {
+            datos.add(new ArrayList<>(Arrays.asList(str(m.getClientName()), str(m.getTechnicianName()), sup.getOrDefault(m.getTechnicianId(), "—"),
+                    ReportesService.estadoDe(m), m.getPuntaje(), fecha(m), str(m.getAddress()))));
+        }
+        return XlsxWriter.hoja("Reporte de minutas · " + descripcion(consulta), "Generado el " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                + " · " + filas.size() + " minutas", List.of("Local", "Técnico", "Supervisor", "Estado", "Puntaje", "Fecha", "Dirección"), datos);
     }
 
     private Map<String, Object> libre(String texto, AuthenticatedUser user, List<Minuta> visibles) {
@@ -507,40 +683,6 @@ public class AsistenteChatService {
             return r.substring(0, 1).toUpperCase() + r.substring(1);
         }
         return "";
-    }
-
-    private static LocalDate[] periodo(String texto) {
-        String s = norm(texto);
-        LocalDate hoy = LocalDate.now();
-        String[] meses = {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-        String sNorm = s.replace("setiembre", "septiembre");
-        for (int i = 0; i < meses.length; i++) {
-            if (sNorm.contains(meses[i])) {
-                LocalDate d = LocalDate.of(hoy.getYear(), i + 1, 1);
-                return new LocalDate[]{d, d.withDayOfMonth(d.lengthOfMonth())};
-            }
-        }
-        if (s.contains("ayer")) {
-            return new LocalDate[]{hoy.minusDays(1), hoy.minusDays(1)};
-        }
-        if (s.contains("hoy")) {
-            return new LocalDate[]{hoy, hoy};
-        }
-        if (s.contains("semana")) {
-            return new LocalDate[]{hoy.minusDays(6), hoy};
-        }
-        Matcher n = Pattern.compile("ultimos? (\\d{1,3}) dias").matcher(s);
-        if (n.find()) {
-            return new LocalDate[]{hoy.minusDays(Integer.parseInt(n.group(1)) - 1L), hoy};
-        }
-        return new LocalDate[]{hoy.withDayOfMonth(1), hoy};
-    }
-
-    private static String resumen(List<Minuta> l) {
-        long v = l.stream().filter(m -> m.getStatus() == MinutaStatus.VALIDADA).count();
-        long c = l.stream().filter(m -> m.getStatus() == MinutaStatus.COMPLETA).count();
-        long b = l.stream().filter(m -> m.getStatus() == MinutaStatus.BORRADOR).count();
-        return l.size() + " minutas · " + v + " validadas · " + c + " por validar · " + b + " sin terminar";
     }
 
     private List<Map<String, Object>> recientes(List<Minuta> l, int n) {
