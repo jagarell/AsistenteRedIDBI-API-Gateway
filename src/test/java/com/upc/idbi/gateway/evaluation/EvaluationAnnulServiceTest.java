@@ -34,15 +34,20 @@ class EvaluationAnnulServiceTest {
     }
 
     @Test
-    void anularUnBorradorLoDejaAnuladoYDescartaSusBorradoresDeMinuta() {
+    void anularUnBorradorLoDejaAnuladoYArchivaSusBorradoresDeMinutaSinBorrarlos() {
+        com.upc.idbi.gateway.minuta.Minuta borrador = com.upc.idbi.gateway.minuta.Minuta.builder().id(9L).clientName("Local").status(MinutaStatus.BORRADOR).build();
         when(evaluations.findById(1L)).thenReturn(Optional.of(evaluation(1L, EvaluationStatus.BORRADOR)));
         when(evaluations.save(any(Evaluation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(minutas.findByEvaluationIdAndStatus(1L, MinutaStatus.BORRADOR)).thenReturn(java.util.List.of(borrador));
 
         Evaluation result = service.annul(1L);
 
         assertThat(result.getAnnulled()).isTrue();
         assertThat(result.getStatus()).isEqualTo(EvaluationStatus.BORRADOR);
-        verify(minutas).deleteByEvaluationIdAndStatus(1L, MinutaStatus.BORRADOR);
+        // Nada se borra: queda archivada y el administrador la puede restaurar (doc 0.0.7 §1).
+        assertThat(borrador.archivada()).isTrue();
+        verify(minutas).save(borrador);
+        verify(minutas, never()).deleteByEvaluationIdAndStatus(any(), any());
     }
 
     @Test

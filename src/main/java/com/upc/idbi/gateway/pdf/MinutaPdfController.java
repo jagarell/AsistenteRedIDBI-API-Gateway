@@ -45,6 +45,8 @@ public class MinutaPdfController {
     private final MinutaService minutaService;
     private final EvaluationRepository evaluationRepository;
     private final ObjectMapper objectMapper;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
     @GetMapping(value = "/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> pdf(
@@ -60,6 +62,9 @@ public class MinutaPdfController {
             if (minuta.getStatus() == MinutaStatus.BORRADOR) {
                 minuta = minutaService.complete(minuta.getId());
             }
+        }
+        if (!preview && minuta != null && bitacora != null) {
+            bitacora.registrar(user, minuta.getId(), "descargar", "Generó el PDF de la minuta de " + minuta.getClientName());
         }
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
@@ -81,7 +86,10 @@ public class MinutaPdfController {
     }
 
     @PostMapping("/send")
-    public Map<String, String> send(@PathVariable Long evaluationId, @Valid @RequestBody SendRequest request) {
+    public Map<String, String> send(@PathVariable Long evaluationId, @Valid @RequestBody SendRequest request, @AuthenticationPrincipal AuthenticatedUser user) {
+        minutaService.findByEvaluation(evaluationId).ifPresent(m -> {
+            if (bitacora != null) bitacora.registrar(user, m.getId(), "compartir", "Compartió la minuta de " + m.getClientName() + " por correo a " + request.to());
+        });
         emailService.sendWithAttachment(
                 request.to(), request.cc(), request.subject(), request.message(),
                 minutaPdfService.generate(evaluationId, false, validatedBy(evaluationId)), "minuta-tecnica.pdf");

@@ -115,6 +115,15 @@ public class MinutaPdfService {
             throw new IllegalStateException("El motor no devolvió el documento de la minuta");
         }
 
+        // «No se pudo mapear»: la topología no sale en la minuta (doc 0.0.7 §3).
+        if (minutaRepository != null && minutaRepository.findFirstByEvaluationIdOrderByIdDesc(evaluationId).map(com.upc.idbi.gateway.minuta.Minuta::sinTopologia).orElse(false)) {
+            document.remove("mapPngBase64");
+            if (document.get("blocks") instanceof List<?> bl) {
+                @SuppressWarnings("unchecked") List<Map<String, Object>> blocks = (List<Map<String, Object>>) bl;
+                blocks.removeIf(b -> "map".equals(b.get("t")));
+            }
+        }
+
         // Sin las evidencias obligatorias (la foto general del local) no se genera el PDF.
         Object missing = document.get("missingMandatory");
         if (missing instanceof List<?> list && !list.isEmpty()) {

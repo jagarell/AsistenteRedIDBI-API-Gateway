@@ -32,6 +32,7 @@ public class InicioController {
     private final MinutaRepository minutas;
     private final UserRepository users;
     private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
+    private final ReportesService reportes;
 
     @GetMapping("/indicadores")
     public Map<String, Object> indicadores(@AuthenticationPrincipal AuthenticatedUser me) {
@@ -48,13 +49,15 @@ public class InicioController {
             alcance = todas.stream().filter(m -> Objects.equals(m.getTechnicianId(), me.id())).toList();
         }
         List<Map<String, Object>> ind = new ArrayList<>();
+        // «Pendientes» = sin terminar (evaluaciones en Borrador) o sin solicitar la validación (doc 0.0.7 §20).
+        int sinTerminar = reportes.borradores(me, users.findAll(), false).size();
         if (me.role() == Role.TECNICO) {
-            ind.add(ind("pendientes", "Pendientes", alcance, "Pendiente", null));
+            ind.add(conBorradores(ind("pendientes", "Pendientes", alcance, "Pendiente", null), sinTerminar));
             ind.add(ind("en_revision", "En revisión", alcance, "En revisión", null));
             ind.add(ind("esperando", "Esperando validación", alcance, "Completa", null));
         } else {
             ind.add(ind("por_validar", "Por validar", alcance, "Completa", null));
-            ind.add(ind("pendientes", "Pendientes", alcance, "Pendiente", null));
+            ind.add(conBorradores(ind("pendientes", "Pendientes", alcance, "Pendiente", null), sinTerminar));
             List<Minuta> riesgo = alcance.stream().filter(m -> !"Validada".equals(ReportesService.estadoDe(m)) && "Riesgo".equals(ReportesService.criticidadDe(m.getPuntaje()))).toList();
             Map<String, Object> r = new LinkedHashMap<>();
             r.put("clave", "en_riesgo");
@@ -68,6 +71,12 @@ public class InicioController {
         out.put("rol", me.role().name());
         out.put("indicadores", ind);
         return out;
+    }
+
+    private static Map<String, Object> conBorradores(Map<String, Object> r, int sinTerminar) {
+        r.put("cantidad", ((Number) r.get("cantidad")).intValue() + sinTerminar);
+        r.put("sinTerminar", sinTerminar);
+        return r;
     }
 
     private static Map<String, Object> ind(String clave, String label, List<Minuta> alcance, String estado, String criticidad) {

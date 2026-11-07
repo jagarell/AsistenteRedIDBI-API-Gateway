@@ -36,6 +36,41 @@ public class ReportesService {
     private final UserRepository users;
     private final RoleService roles;
     private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.evaluation.EvaluationRepository evaluations;
+
+    /**
+     * Evaluaciones que el técnico empezó y no terminó (estado «Borrador»): todavía no son minuta, no tienen puntaje ni PDF (doc 0.0.7 §19 y §25).
+     * El técnico ve las suyas; el supervisor las de su equipo y las suyas; el administrador todas.
+     */
+    public List<Map<String, Object>> borradores(AuthenticatedUser user, List<UserEntity> us, boolean soloMias) {
+        if (evaluations == null) {
+            return List.of();
+        }
+        Set<Long> ids = new java.util.HashSet<>();
+        ids.add(user.id());
+        if (!soloMias && user.role() == Role.SUPERVISOR) {
+            us.stream().filter(u -> Objects.equals(u.getSupervisorId(), user.id())).forEach(u -> ids.add(u.getId()));
+        }
+        boolean todos = !soloMias && user.role() == Role.ADMINISTRADOR;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (var e : evaluations.findAll()) {
+            boolean enCurso = e.getStatus() == com.upc.idbi.gateway.evaluation.EvaluationStatus.BORRADOR && !Boolean.TRUE.equals(e.getAnnulled())
+                    && (e.getChatAnswersJson() == null || e.getChatAnswersJson().isBlank())
+                    && minutas.findFirstByEvaluationIdOrderByIdDesc(e.getId()).isEmpty();
+            if (!enCurso || !(todos || (e.getCreadoPorId() != null && ids.contains(e.getCreadoPorId())))) {
+                continue;
+            }
+            Map<String, Object> f = new LinkedHashMap<>();
+            f.put("evaluationId", e.getId());
+            f.put("local", e.getRestaurantName() == null || e.getRestaurantName().isBlank() ? "Evaluación sin nombre" : e.getRestaurantName());
+            f.put("tecnico", e.getCreadoPorNombre());
+            f.put("avance", e.getProgress() == null ? 0 : e.getProgress());
+            f.put("fecha", e.getCreatedAt() == null ? null : e.getCreatedAt().toLocalDate().toString());
+            out.add(f);
+        }
+        return out;
+    }
 
     public record Fila(Long id, LocalDateTime fecha, Long tecnicoId, String tecnico, String supervisor, String local, String rubro,
                        String estado, String criticidad, Integer puntaje, String esfuerzo, String plazo, Integer minutos, String tipo,
@@ -172,6 +207,7 @@ public class ReportesService {
         List<Fila> filas = alcance.stream().filter(x -> pasa(x, f2, null)).toList();
         out.put("indicadores", indicadores(filas));
         out.put("minutas", filas);
+        out.put("borradores", borradores(user, us, "mis".equals(v)));
         out.put("total", alcance.size());
         return out;
     }

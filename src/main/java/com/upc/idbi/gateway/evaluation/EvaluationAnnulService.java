@@ -13,6 +13,8 @@ public class EvaluationAnnulService {
 
     private final EvaluationRepository evaluations;
     private final MinutaRepository minutas;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
     /**
      * Marca la evaluación como anulada y descarta los borradores de minuta que salieron de ella
@@ -26,7 +28,14 @@ public class EvaluationAnnulService {
             throw new IllegalArgumentException("Solo se pueden anular las evaluaciones en borrador");
         }
         evaluation.setAnnulled(true);
-        minutas.deleteByEvaluationIdAndStatus(id, MinutaStatus.BORRADOR);
+        // Nada se borra: los borradores de minuta quedan archivados y el administrador los puede restaurar.
+        for (com.upc.idbi.gateway.minuta.Minuta m : minutas.findByEvaluationIdAndStatus(id, MinutaStatus.BORRADOR)) {
+            m.setArchivada(true);
+            minutas.save(m);
+            if (bitacora != null) {
+                bitacora.registrar(null, m.getId(), "archivar", "Anuló el borrador de " + m.getClientName() + ": quedó archivado");
+            }
+        }
         return evaluations.save(evaluation);
     }
 }

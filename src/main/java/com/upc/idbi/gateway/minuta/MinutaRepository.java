@@ -16,6 +16,8 @@ public interface MinutaRepository extends JpaRepository<Minuta, Long> {
 
     void deleteByEvaluationIdAndStatus(Long evaluationId, MinutaStatus status);
 
+    List<Minuta> findByEvaluationIdAndStatus(Long evaluationId, MinutaStatus status);
+
     /** Borradores a los que todavía no se les avisó que están por vencer. */
     List<Minuta> findByStatusAndExpiryReminderSentAtIsNull(MinutaStatus status);
 }

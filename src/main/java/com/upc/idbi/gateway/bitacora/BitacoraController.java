@@ -19,6 +19,7 @@ public class BitacoraController {
     private final BitacoraRepository repo;
     private final MinutaRepository minutas;
     private final com.upc.idbi.gateway.auth.UserRepository users;
+    private final BitacoraService servicio;
 
     private static Map<String, Object> fila(Bitacora b) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -103,6 +104,20 @@ public class BitacoraController {
         r.put("editores48h", editores);
         r.put("eventos", ev.stream().map(BitacoraController::fila).toList());
         return r;
+    }
+
+    /** La app avisa lo que no pasa por el servidor: compartir por WhatsApp, Gmail, Drive… («Compartió por WhatsApp»). */
+    @PostMapping("/api/minutas/{id}/eventos")
+    public Map<String, Object> evento(@PathVariable Long id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal AuthenticatedUser user) {
+        Minuta m = minutas.findById(id).orElse(null);
+        String tipo = String.valueOf(body.getOrDefault("tipo", ""));
+        if (m == null || !puedeVer(m, user) || !Set.of("compartir", "descargar").contains(tipo)) {
+            return Map.of("registrado", false);
+        }
+        String detalle = String.valueOf(body.getOrDefault("detalle", "")).trim();
+        String accion = ("compartir".equals(tipo) ? "Compartió la minuta de " : "Descargó la minuta de ") + m.getClientName() + (detalle.isEmpty() ? "" : " " + detalle);
+        servicio.registrar(user, id, tipo, accion.length() > 390 ? accion.substring(0, 390) : accion);
+        return Map.of("registrado", true);
     }
 
     private boolean puedeVer(Minuta m, AuthenticatedUser user) {
