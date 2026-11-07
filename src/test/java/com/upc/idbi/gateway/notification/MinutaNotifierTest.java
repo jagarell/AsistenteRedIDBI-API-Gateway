@@ -34,8 +34,16 @@ class MinutaNotifierTest {
     @Mock
     UserNotificationRepository inbox;
 
+    @Mock
+    AvisosService avisos;
+
     @InjectMocks
     MinutaNotifier notifier;
+
+    @org.junit.jupiter.api.BeforeEach
+    void avisosActivosPorDefecto() {
+        org.mockito.Mockito.lenient().when(avisos.activo(any(), any(), org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+    }
 
     private UserEntity user(String token) {
         UserEntity u = new UserEntity();
@@ -98,5 +106,31 @@ class MinutaNotifierTest {
         Minuta minuta = Minuta.builder().id(5L).clientName("Cliente").build();
 
         assertThat(notifier.draftExpiring(minuta, 1)).isFalse();
+    }
+
+    @Test
+    void sinTopologiaLaNotificacionAlSupervisorLoDiceYLaMinutaNo() {
+        Minuta minuta = Minuta.builder().id(5L).clientName("Local Sin Mapa").technicianName("Yomira").contentJson("{\"sinTopologia\":true}").build();
+        when(users.findByRoleAndFcmTokenIsNotNull(Role.SUPERVISOR)).thenReturn(List.of(user("t1")));
+
+        notifier.minutaCompleted(minuta);
+
+        verify(push).trySend(eq("t1"), any(), contains("Sin topología de red: no se pudo mapear"), anyMap());
+        verify(push).trySend(eq("t1"), any(), contains("tarea pendiente del cliente"), anyMap());
+    }
+
+    @Test
+    void siElSupervisorDesactivoElAvisoNoSaleElPushPeroSigueEnLaBandeja() {
+        Minuta minuta = Minuta.builder().id(6L).clientName("Local").technicianName("Yomira").build();
+        UserEntity sup = user("t9");
+        sup.setId(77L);
+        when(users.findByRole(Role.SUPERVISOR)).thenReturn(List.of(sup));
+        when(users.findByRoleAndFcmTokenIsNotNull(Role.SUPERVISOR)).thenReturn(List.of(sup));
+        when(avisos.activo(77L, Role.SUPERVISOR, "tecEnvia")).thenReturn(false);
+
+        notifier.minutaCompleted(minuta);
+
+        verify(push, never()).trySend(any(), any(), any(), anyMap());
+        verify(inbox).save(any(UserNotification.class));
     }
 }

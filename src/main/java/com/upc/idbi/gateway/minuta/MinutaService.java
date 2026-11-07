@@ -26,13 +26,10 @@ public class MinutaService {
      */
     @Transactional(readOnly = true)
     public List<Minuta> list(MinutaStatus status, Long technicianId) {
-        if (status != null) {
-            return repository.findByStatusOrderByCreatedAtDesc(status);
-        }
-        if (technicianId != null) {
-            return repository.findByTechnicianIdOrderByCreatedAtDesc(technicianId);
-        }
-        return repository.findAllByOrderByCreatedAtDesc();
+        List<Minuta> l = status != null ? repository.findByStatusOrderByCreatedAtDesc(status)
+                : technicianId != null ? repository.findByTechnicianIdOrderByCreatedAtDesc(technicianId)
+                : repository.findAllByOrderByCreatedAtDesc();
+        return l.stream().filter(m -> !m.archivada()).toList();
     }
 
     @Transactional(readOnly = true)
@@ -210,6 +207,34 @@ public class MinutaService {
         if (minuta.getStatus() == MinutaStatus.COMPLETA) {
             throw new IllegalArgumentException("La minuta está completa y en revisión: espera la respuesta del supervisor");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Minuta> listAll() {
+        return repository.findAllByOrderByCreatedAtDesc();
+    }
+
+    @Transactional
+    public Minuta restaurar(Long id) {
+        Minuta m = get(id);
+        m.setArchivada(false);
+        return repository.save(m);
+    }
+
+    @Transactional
+    public Minuta setSinTopologia(Long id, boolean sin) {
+        Minuta m = get(id);
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Map<String, Object> c = m.getContentJson() == null || m.getContentJson().isBlank() ? new java.util.LinkedHashMap<>()
+                    : om.readValue(m.getContentJson(), new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+            c.put("sinTopologia", sin);
+            m.setContentJson(om.writeValueAsString(c));
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("No se pudo guardar la topología de la minuta");
+        }
+        m.setUpdatedAt(java.time.LocalDateTime.now());
+        return repository.save(m);
     }
 
     /** Mientras el supervisor o el administrador edita la minuta, nadie más puede editarla (doc 0.0.7 §12). */

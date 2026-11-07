@@ -23,17 +23,25 @@ public class MinutaNotifier {
     private final PushNotificationService push;
     private final UserRepository users;
     private final UserNotificationRepository inbox;
+    private final AvisosService avisos;
 
     /** Avisa a todos los supervisores con un dispositivo registrado. */
     public void minutaCompleted(Minuta minuta) {
         String technician = minuta.getTechnicianName() == null ? "Un técnico" : minuta.getTechnicianName();
         String body = technician + " completó la minuta de " + minuta.getClientName() + ". Está lista para validar.";
+        if (minuta.sinTopologia()) {
+            // Solo en la notificación, nunca dentro de la minuta (doc 0.0.7 §3 y §10).
+            body += "\n⚠️ Sin topología de red: no se pudo mapear. Queda como tarea pendiente del cliente: enviar su mapa de red.";
+        }
         Map<String, String> data = data("MINUTA_COMPLETA", minuta);
         // Todos los supervisores ven el aviso en su bandeja; el push sale solo a los que tienen dispositivo registrado.
         for (UserEntity supervisor : users.findByRole(Role.SUPERVISOR)) {
             save(supervisor.getId(), "Minuta por validar", body, minuta, "MINUTA_COMPLETA");
         }
         for (UserEntity supervisor : users.findByRoleAndFcmTokenIsNotNull(Role.SUPERVISOR)) {
+            if (!avisos.activo(supervisor.getId(), Role.SUPERVISOR, "tecEnvia")) {
+                continue;
+            }
             push.trySend(supervisor.getFcmToken(), "Minuta por validar", body, data);
         }
     }
@@ -48,6 +56,9 @@ public class MinutaNotifier {
             String body = supervisor + " validó la minuta de " + minuta.getClientName()
                     + ". El PDF ya sale sin la marca de agua SIN VALIDAR.";
             save(technician.getId(), "Minuta validada", body, minuta, "MINUTA_VALIDADA");
+            if (!avisos.activo(technician.getId(), Role.TECNICO, "validan")) {
+                return;
+            }
             push.trySend(technician.getFcmToken(), "Minuta validada", body, data("MINUTA_VALIDADA", minuta));
         });
     }
@@ -62,6 +73,9 @@ public class MinutaNotifier {
             String body = supervisor + " rechazó la minuta de " + minuta.getClientName() + ": "
                     + minuta.getRejectionReason() + ". Corrígela y vuelve a completarla.";
             save(technician.getId(), "Minuta rechazada", body, minuta, "MINUTA_RECHAZADA");
+            if (!avisos.activo(technician.getId(), Role.TECNICO, "devuelven")) {
+                return;
+            }
             push.trySend(technician.getFcmToken(), "Minuta rechazada", body, data("MINUTA_RECHAZADA", minuta));
         });
     }

@@ -80,7 +80,7 @@ public class EmpresaService {
 
     /** ¿Se ve? Las minutas demo Borrador o Pendiente dejan de verse al pasar a producción. */
     public boolean visible(Minuta m) {
-        return m.getVisible() == null || m.getVisible();
+        return !m.archivada() && (m.getVisible() == null || m.getVisible());
     }
 
     public List<Minuta> contadas(List<Minuta> todas) {

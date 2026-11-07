@@ -22,6 +22,8 @@ public class AsistenteController {
     private final FastApiClient fastApi;
     private final ReglaEmpresaRepository reglas;
     private final FichaConocimientoRepository fichas;
+    private final com.upc.idbi.gateway.auth.UserRepository users;
+    private final com.upc.idbi.gateway.notification.UserNotificationRepository notificaciones;
 
     private final com.upc.idbi.gateway.asistente.AsistenteChatService chat;
 
@@ -35,6 +37,22 @@ public class AsistenteController {
     @PostMapping("/api/asistente/programados/{id}/cancelar")
     public Map<String, Object> cancelarProgramado(@org.springframework.web.bind.annotation.PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
         return chat.cancelarProgramado(id, user);
+    }
+
+    /** «Enviar sugerencia al administrador»: le llega en Notificaciones (doc 0.0.7 §55). */
+    @PostMapping("/api/asistente/sugerencia")
+    public Map<String, Object> sugerencia(@RequestBody Map<String, Object> req, @AuthenticationPrincipal AuthenticatedUser user) {
+        String texto = String.valueOf(req.getOrDefault("texto", "")).trim();
+        if (texto.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Escribe la sugerencia.");
+        }
+        int n = 0;
+        for (com.upc.idbi.gateway.auth.UserEntity admin : users.findByRole(com.upc.idbi.gateway.auth.Role.ADMINISTRADOR)) {
+            notificaciones.save(com.upc.idbi.gateway.notification.UserNotification.builder().userId(admin.getId()).title("Sugerencia de criterio")
+                    .body(user.fullName() + " sugiere: " + texto).type("SUGERENCIA").createdAt(java.time.LocalDateTime.now()).build());
+            n++;
+        }
+        return Map.of("enviada", n > 0);
     }
 
     /** «Redactar minuta» del borrador que armó el asistente. */

@@ -84,6 +84,32 @@ public class MinutaController {
         return MinutaResponse.from(m);
     }
 
+    /** Borradores anulados (archivados): nada se borra. Solo el administrador los ve y restaura. */
+    @GetMapping("/archivadas")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    public List<MinutaResponse> archivadas() {
+        return service.listAll().stream().filter(Minuta::archivada).map(MinutaResponse::from).toList();
+    }
+
+    @PostMapping("/{id}/restaurar")
+    @PreAuthorize("hasRole('ADMINISTRADOR')")
+    public MinutaResponse restaurar(@PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
+        Minuta m = service.restaurar(id);
+        bitacora.registrar(user, id, "restaurar", "Restauró el borrador de " + m.getClientName());
+        return MinutaResponse.from(m);
+    }
+
+    /** «Topología en la minuta»: Incluida o No se pudo mapear (solo el técnico y mientras la minuta es Borrador). */
+    @PutMapping("/{id}/topologia")
+    public MinutaResponse topologia(@PathVariable Long id, @RequestBody java.util.Map<String, Object> body, @AuthenticationPrincipal AuthenticatedUser user) {
+        Minuta m = service.get(id);
+        service.assertCanEdit(m, user);
+        boolean incluida = !Boolean.FALSE.equals(body.get("incluida")) && !"false".equals(String.valueOf(body.get("incluida")));
+        m = service.setSinTopologia(id, !incluida);
+        bitacora.registrar(user, id, "editar", "Editó la topología de red — " + (incluida ? "incluida en la minuta" : "no se pudo mapear: no sale en la minuta"));
+        return MinutaResponse.from(m);
+    }
+
     /** Marca la minuta como COMPLETA (lista para validación del supervisor). */
     @PostMapping("/{id}/completar")
     public MinutaResponse complete(@PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {

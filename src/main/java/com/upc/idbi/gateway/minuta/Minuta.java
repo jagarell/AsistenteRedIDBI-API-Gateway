@@ -163,6 +163,24 @@ public class Minuta {
         return bloqueadoPorId != null && bloqueadoDesde != null && bloqueadoDesde.isAfter(LocalDateTime.now().minusMinutes(30));
     }
 
+    /** Anular un borrador lo archiva: no se borra y el administrador lo puede restaurar (doc 0.0.7 §1). */
+    private Boolean archivada;
+
+    public boolean archivada() {
+        return Boolean.TRUE.equals(archivada);
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** «Topología en la minuta: No se pudo mapear» (doc 0.0.7 §3): la topología no sale en la minuta. Vive dentro de contentJson. */
+    public boolean sinTopologia() {
+        try {
+            return contentJson != null && !contentJson.isBlank() && JSON.readTree(contentJson).path("sinTopologia").asBoolean(false);
+        } catch (java.io.IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
     public boolean isSoporte() {
         return "SOPORTE".equals(tipo);
     }

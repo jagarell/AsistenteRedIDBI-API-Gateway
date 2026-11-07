@@ -23,6 +23,8 @@ public class UserNotificationController {
     private final PushNotificationService push;
     private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
     private final com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
+    private final com.upc.idbi.gateway.evaluation.EvaluationRepository evaluations;
+    private final AvisosService avisosService;
 
     @GetMapping
     public Map<String, Object> mine(@AuthenticationPrincipal AuthenticatedUser user) {
@@ -123,6 +125,36 @@ public class UserNotificationController {
         return out;
     }
 
+    /** «Avisarme cuando…»: las opciones según el rol y lo que cada usuario marcó. */
+    @org.springframework.web.bind.annotation.GetMapping("/avisos")
+    public Map<String, Object> avisos(@AuthenticationPrincipal AuthenticatedUser user) {
+        Map<String, Boolean> estado = avisosService.estado(user.id(), user.role());
+        List<Map<String, Object>> l = new java.util.ArrayList<>();
+        AvisosService.opciones(user.role()).forEach((k, t) -> l.add(Map.of("clave", k, "texto", t, "activo", estado.getOrDefault(k, true))));
+        return Map.of("opciones", l);
+    }
+
+    @org.springframework.web.bind.annotation.PutMapping("/avisos")
+    public Map<String, Boolean> guardarAvisos(@org.springframework.web.bind.annotation.RequestBody Map<String, Object> cambios, @AuthenticationPrincipal AuthenticatedUser user) {
+        return avisosService.guardar(user.id(), user.role(), cambios);
+    }
+
+    /** «Pedir que la termine» para una evaluación que todavía no es minuta (Borrador · sin minuta). */
+    private Map<String, Object> recordatorioEvaluacion(Long evaluationId, AuthenticatedUser user) {
+        var e = evaluations.findById(evaluationId).orElseThrow(() -> new IllegalArgumentException("Evaluación no encontrada"));
+        var destino = users.findAll().stream().filter(u -> u.getFullName() != null && u.getFullName().equalsIgnoreCase(e.getTechnicianName())).findFirst().orElse(null);
+        if (destino == null) {
+            throw new IllegalArgumentException("No hay a quién avisar");
+        }
+        String nombre = e.getRestaurantName() == null || e.getRestaurantName().isBlank() ? "tu evaluación" : e.getRestaurantName();
+        String texto = (user.isAdmin() ? "Administrador " : "Supervisor ") + user.fullName() + " te pide: termina la minuta de " + nombre + ".";
+        bitacora.registrar(user, null, "aviso", texto);
+        repository.save(UserNotification.builder().userId(destino.getId()).title("Recordatorio").body(texto).type("RECORDATORIO")
+                .evaluationId(e.getId()).createdAt(LocalDateTime.now()).build());
+        push.trySend(destino.getFcmToken(), "Recordatorio", texto, Map.of("type", "RECORDATORIO", "evaluationId", String.valueOf(e.getId())));
+        return Map.of("ok", true, "aviso", destino.getFullName());
+    }
+
     /**
      * Recordatorio al técnico (doc 0.0.7 §29). Supervisor y administrador piden: terminar (borrador), solicitar la validación (pendiente)
      * o corregir (en revisión). Solo el administrador puede además recordar al supervisor.
@@ -132,6 +164,9 @@ public class UserNotificationController {
     @Transactional
     public Map<String, Object> recordatorio(@org.springframework.web.bind.annotation.RequestBody Map<String, Object> req,
                                             @AuthenticationPrincipal AuthenticatedUser user) {
+        if (req.get("minutaId") == null && req.get("evaluationId") != null) {
+            return recordatorioEvaluacion(((Number) req.get("evaluationId")).longValue(), user);
+        }
         Long minutaId = ((Number) req.get("minutaId")).longValue();
         String accion = String.valueOf(req.getOrDefault("accion", "terminar"));
         var m = minutas.findById(minutaId).orElseThrow(() -> new IllegalArgumentException("Minuta no encontrada"));

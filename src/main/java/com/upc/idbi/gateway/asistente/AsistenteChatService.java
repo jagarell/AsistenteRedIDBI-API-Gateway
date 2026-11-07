@@ -47,6 +47,8 @@ public class AsistenteChatService {
     private static final Pattern REPORTE = Pattern.compile("\\b(reporte|informe|eficiencia|productividad)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONSULTA = Pattern.compile("fecha|cu[aá]ndo|observaci|recomendaci|historial|estado|t[eé]cnico|versi[oó]n|qu[eé] (se )?(vio|encontr)", Pattern.CASE_INSENSITIVE);
     private static final Pattern SEGUIMIENTO = Pattern.compile("^(solo|sin|no de|de |del |ahora|tambien|ademas|excepto|menos)|mes anterior|mes pasado");
+    private static final Pattern PROGRESO = Pattern.compile("c[oó]mo voy|qu[eé] me falta|cu[aá]nto (me )?falta|mi progreso|qu[eé] me queda", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CRITERIOS = Pattern.compile("(en|para) todas las minutas|de ahora en adelante|a partir de ahora|cambia(r)? la regla|todas las minutas (deben|tienen)", Pattern.CASE_INSENSITIVE);
     private static final Set<String> VACIAS = Set.of("ejemplo", "local", "restaurante", "cocina", "minuta", "cliente", "grupo");
 
     private final MinutaRepository minutas;
@@ -62,6 +64,7 @@ public class AsistenteChatService {
     private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
     private final ReporteProgramadoRepository programados;
     private final com.upc.idbi.gateway.notification.UserNotificationRepository notificaciones;
+    private final com.upc.idbi.gateway.evaluation.EvaluationRepository evaluations;
 
     // ---------------------------------------------------------------- entrada
 
@@ -76,6 +79,13 @@ public class AsistenteChatService {
         }
         List<Minuta> visibles = visibles(user);
 
+        // Un cambio de criterio para todas las minutas no se aplica desde un chat (doc 0.0.7 §55).
+        if (CRITERIOS.matcher(norm(texto)).find() && !"upd".equals(modo)) {
+            return criterios(texto, user);
+        }
+        if (PROGRESO.matcher(texto).find() && !POR_VALIDAR.matcher(texto).find() && !"upd".equals(modo)) {
+            return progreso(user, visibles);
+        }
         if ("upd".equals(modo) && minutaId != null) {
             return actualizar(minutaId, texto, user);
         }
@@ -369,6 +379,51 @@ public class AsistenteChatService {
         b.put("items", items);
         b.put("texto", tec ? sinTerminar.size() + " sin terminar, " + rechazadas.size() + " rechazadas."
                 : sinTerminar.size() + " sin terminar, " + rechazadas.size() + " rechazadas, " + validar.size() + " por validar.");
+        return out(b);
+    }
+
+    /** «¿Cómo voy?» / «¿qué me falta?»: por cada evaluación en curso o minuta pendiente, el avance y lo que sigue (doc 0.0.7 §4). */
+    private Map<String, Object> progreso(AuthenticatedUser user, List<Minuta> visibles) {
+        List<Map<String, Object>> items = new ArrayList<>();
+        List<String> lineas = new ArrayList<>();
+        for (com.upc.idbi.gateway.evaluation.Evaluation e : evaluations.findAll()) {
+            boolean enCurso = e.getStatus() == com.upc.idbi.gateway.evaluation.EvaluationStatus.BORRADOR && !Boolean.TRUE.equals(e.getAnnulled())
+                    && minutas.findFirstByEvaluationIdOrderByIdDesc(e.getId()).isEmpty();
+            boolean mia = e.getTechnicianName() == null || e.getTechnicianName().equalsIgnoreCase(user.fullName());
+            if (!enCurso || !mia) {
+                continue;
+            }
+            int p = e.getProgress() == null ? 0 : e.getProgress();
+            Map<String, Object> it = new LinkedHashMap<>();
+            it.put("titulo", firstNonBlank(e.getRestaurantName(), "Evaluación sin nombre"));
+            it.put("detalle", "Borrador · " + p + " % · sigue con la siguiente pregunta en el Chat IA (botón «Continuar» del Inicio)");
+            items.add(it);
+        }
+        for (Minuta m : visibles.stream().filter(x -> Objects.equals(x.getTechnicianId(), user.id())).toList()) {
+            if (m.getStatus() == MinutaStatus.BORRADOR && (m.getRejectionReason() == null || m.getRejectionReason().isBlank())) {
+                items.add(item(m, "100 % · terminada · falta solicitar la validación al supervisor"));
+            } else if (m.getStatus() == MinutaStatus.BORRADOR) {
+                items.add(item(m, "Rechazada: " + firstNonBlank(m.getRejectionReason(), "corrígela") + " · falta volver a solicitar la validación"));
+            }
+        }
+        if (items.isEmpty()) {
+            return out(texto("No tienes evaluaciones en curso ni minutas pendientes. ¡Todo al día!"));
+        }
+        Map<String, Object> b = bloque("pendientes", "Tu progreso", items.size() + (items.size() == 1 ? " evaluación o minuta por cerrar." : " evaluaciones o minutas por cerrar."));
+        b.put("items", items);
+        return out(b);
+    }
+
+    /** Pedir un cambio para todas las minutas: lo decide el administrador en Preguntas y reglas o el equipo de desarrollo, nunca un chat. */
+    private Map<String, Object> criterios(String texto, AuthenticatedUser user) {
+        Map<String, Object> b = bloque("texto", null, "Ese cambio afecta a todas las minutas, así que no lo aplico desde un chat. Lo decide el administrador en Preguntas y reglas o el equipo de desarrollo.");
+        List<Map<String, Object>> acciones = new ArrayList<>();
+        if (user.role() == Role.ADMINISTRADOR) {
+            acciones.add(accion("abrir_preguntas", "Abrir Preguntas y reglas", true, Map.of()));
+        } else {
+            acciones.add(accion("sugerir", "Enviar sugerencia al administrador", true, Map.of("texto", texto)));
+        }
+        b.put("acciones", acciones);
         return out(b);
     }
 
