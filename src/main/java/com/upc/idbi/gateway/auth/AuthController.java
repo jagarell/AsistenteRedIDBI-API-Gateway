@@ -2,7 +2,9 @@ package com.upc.idbi.gateway.auth;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import com.upc.idbi.gateway.security.AuthenticatedUser;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -54,5 +56,15 @@ public class AuthController {
             @Valid @RequestBody ResetPasswordRequest request
     ) {
         return authService.resetPassword(request);
+    }
+
+    /** Cambiar contraseña con la sesión iniciada (pide la actual). */
+    @PostMapping("/change-password")
+    public ResetPasswordResponse changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal AuthenticatedUser me
+    ) {
+        if (me == null) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Inicia sesión");
+        return authService.changePassword(me.id(), request);
     }
 }

@@ -99,6 +99,20 @@ public class MinutaChangesService {
                     add(soporte != null ? soporte : content, "pasos", Map.of("p", "pasoC".equals(k) ? "Cliente" : "ID", "t", t));
                     resumen.add(("pasoC".equals(k) ? "Paso del cliente: " : "Paso del equipo técnico: ") + t);
                 }
+                case "doc" -> {
+                    // 0.0.7 · Parte 6: cualquier dato de la minuta (tablas, impresoras, equipos, energía, anexo). Se guardan las
+                    // operaciones y se aplican cada vez que se arma el PDF (ver MinutaPdfService.mergeMinuta007).
+                    @SuppressWarnings("unchecked") Map<String, Object> op = (Map<String, Object>) it.get("v");
+                    if (op != null) {
+                        if ("routerEnc".equals(op.get("op"))) {
+                            // la ubicación nueva del router reemplaza la anterior (también si ya no es un espacio cerrado)
+                            content.put("routerEncF", op.get("enc"));
+                        } else {
+                            add(content, "docOps", op);
+                        }
+                        resumen.add(t);
+                    }
+                }
                 case "obs" -> {
                     if (soporte != null) {
                         add(soporte, "notas", t);

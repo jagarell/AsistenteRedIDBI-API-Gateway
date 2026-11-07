@@ -267,6 +267,21 @@ public class AuthService {
         );
     }
 
+    @Transactional
+    public ResetPasswordResponse changePassword(Long userId, ChangePasswordRequest request) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("La contraseña actual es incorrecta");
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("La nueva contraseña debe ser distinta de la actual");
+        }
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+        return new ResetPasswordResponse("Contraseña actualizada correctamente");
+    }
+
     private String generateRecoveryCode() {
         SecureRandom random = new SecureRandom();
         int code = 100000 + random.nextInt(900000);

@@ -400,6 +400,24 @@ public class MinutaPdfService {
                     Map<String, Object> c = objectMapper.readValue(m.getContentJson(), new TypeReference<Map<String, Object>>() {});
                     if (c.get("routerEncF") != null) {
                         edits.put("routerEncF", c.get("routerEncF"));
+                    } else if (c.containsKey("routerEncF")) {
+                        edits.remove("routerEncF");
+                    }
+                    // 0.0.7 · Parte 6: lo actualizado con el Asistente IA llega al PDF (antes solo llegaban contraseñas y router)
+                    if (c.get("docOps") instanceof List<?> ops && !ops.isEmpty()) {
+                        edits.put("doc", ops);
+                    }
+                    if (c.get("recs") instanceof List<?> recs && !recs.isEmpty()) {
+                        edits.put("recsExtra", recs);
+                    }
+                    if (c.get("pasos") instanceof List<?> pasos && !pasos.isEmpty()) {
+                        edits.put("pasosExtra", pasos);
+                    }
+                    if (c.get("obsTec") instanceof String obsTec && !obsTec.isBlank()) {
+                        Map<String, Object> obs = edits.get("obs") instanceof Map<?, ?> o ? new java.util.HashMap<>((Map<String, Object>) o) : new java.util.HashMap<>();
+                        String prev = obs.get("tec") == null ? "" : String.valueOf(obs.get("tec")).trim();
+                        obs.put("tec", prev.isEmpty() ? obsTec.trim() : prev + " " + obsTec.trim());
+                        edits.put("obs", obs);
                     }
                     if (c.get("routerDet") != null) {
                         Map<String, Object> datos = edits.get("datos") instanceof Map<?, ?> d ? new java.util.HashMap<>((Map<String, Object>) d) : new java.util.HashMap<>();

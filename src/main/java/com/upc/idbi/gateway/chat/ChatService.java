@@ -63,6 +63,7 @@ public class ChatService {
                 List.of(),
                 request.mode(),
                 null,
+                null,
                 null
         ));
     }
@@ -118,13 +119,18 @@ public class ChatService {
      * se guardan las versiones con las credenciales desenfocadas, nunca el
      * original. */
     public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state, String mode) {
-        return answerChatWithPhotos(evaluationId, files, state, mode, null, null);
+        return answerChatWithPhotos(evaluationId, files, state, mode, null, null, null);
+    }
+
+    public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state, String mode,
+                                             String nota, String nodeId) {
+        return answerChatWithPhotos(evaluationId, files, state, mode, nota, nodeId, null);
     }
 
     /** 0.0.7: `mode = "forzar"` + `nota` («Guardar como correcta») y `nodeId` (foto pendiente de «Subir después»). La foto
      * se guarda igual que siempre; la nota opcional viaja en la lectura (`_forzada`, `_nota`) y es lo único que muestra la minuta. */
     public ChatResponse answerChatWithPhotos(Long evaluationId, List<MultipartFile> files, String state, String mode,
-                                             String nota, String nodeId) {
+                                             String nota, String nodeId, String descripcion) {
         List<byte[]> originals = new ArrayList<>();
         List<String> base64 = new ArrayList<>();
         try {
@@ -140,13 +146,58 @@ public class ChatService {
         ChatResponse response = callFastApiAndPersist(evaluationId, new ChatAnswerRequest(
                 String.valueOf(evaluationId), state, "", base64, mode,
                 nota == null || nota.isBlank() ? null : nota.trim(),
-                nodeId == null || nodeId.isBlank() ? null : nodeId
+                nodeId == null || nodeId.isBlank() ? null : nodeId,
+                descripcion == null || descripcion.isBlank() ? null : descripcion.trim()
         ));
 
         if (response != null && response.lastEvidence() != null && response.validationError() == null) {
             storeEvidence(evaluationId, response, originals, files);
         }
+        syncEvidenceComments(evaluationId, response);
         return response;
+    }
+
+    /** 0.0.15: agregar, editar o borrar (texto vacío) la descripción de una evidencia ya subida. La API la guarda en el
+     * estado (sale en la minuta debajo de la foto) y aquí se copia al comentario de las fotos guardadas. */
+    public ChatResponse evidenceNote(Long evaluationId, Map<String, Object> body) {
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("evaluationId", String.valueOf(evaluationId));
+        request.put("state", body.get("state"));
+        request.put("nodeId", body.get("nodeId"));
+        request.put("descripcion", body.get("descripcion") == null ? "" : String.valueOf(body.get("descripcion")));
+        ChatResponse response = restTemplate.postForObject(fastApiBaseUrl + "/chat/evidence-note", request, ChatResponse.class);
+        if (response != null && response.validationError() == null && body.get("nodeId") != null) {
+            String node = String.valueOf(body.get("nodeId"));
+            String text = response.evidenceNotes() == null ? null : response.evidenceNotes().get(node);
+            setEvidenceComment(evaluationId, node, text);
+        }
+        if (response != null && Boolean.TRUE.equals(response.completed())) {
+            persistAnswers(evaluationId, response.answers());
+        }
+        return response;
+    }
+
+    /** Copia la descripción de la API a las fotos guardadas (columna `comment`). */
+    private void syncEvidenceComments(Long evaluationId, ChatResponse response) {
+        if (response == null || response.evidenceNotes() == null || response.lastEvidence() == null) {
+            return;
+        }
+        String node = String.valueOf(response.lastEvidence().get("nodeId"));
+        setEvidenceComment(evaluationId, node, response.evidenceNotes().get(node));
+    }
+
+    private void setEvidenceComment(Long evaluationId, String nodeId, String text) {
+        try {
+            int i = nodeId.indexOf('#');
+            String code = i < 0 ? nodeId : nodeId.substring(0, i);
+            String scope = i < 0 ? "" : nodeId.substring(i + 1);
+            for (Evidence e : evidenceRepository.findByEvaluationIdAndEvidenceCodeAndChatScope(evaluationId, code, scope)) {
+                e.setComment(text == null || text.isBlank() ? null : text);
+                evidenceRepository.save(e);
+            }
+        } catch (Exception ex) {
+            log.warn("No se pudo guardar la descripción de la evidencia {} de la evaluación {}", nodeId, evaluationId, ex);
+        }
     }
 
     private static final int ADJUNTO_MAX_FILES = 3;

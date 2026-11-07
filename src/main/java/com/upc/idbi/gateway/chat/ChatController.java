@@ -83,8 +83,19 @@ public class ChatController {
             // «Guardar como correcta»: mode = "forzar" y la nota opcional del técnico
             @RequestPart(value = "nota", required = false) String nota,
             // «Subir después»: la foto pendiente que se sube al final (EV#Calientes)
-            @RequestPart(value = "nodeId", required = false) String nodeId
+            @RequestPart(value = "nodeId", required = false) String nodeId,
+            // 0.0.15: descripción opcional de la foto
+            @RequestPart(value = "descripcion", required = false) String descripcion
     ) {
-        return chatService.answerChatWithPhotos(evaluationId, files, state, mode, nota, nodeId);
+        return chatService.answerChatWithPhotos(evaluationId, files, state, mode, nota, nodeId, descripcion);
+    }
+
+    /** 0.0.15: agregar, editar o borrar (descripcion vacía) la descripción de una evidencia. Body: {state, nodeId, descripcion}. */
+    @PostMapping("/evidence-note")
+    public ChatResponse evidenceNote(
+            @PathVariable Long evaluationId,
+            @RequestBody java.util.Map<String, Object> body
+    ) {
+        return chatService.evidenceNote(evaluationId, body);
     }
 }

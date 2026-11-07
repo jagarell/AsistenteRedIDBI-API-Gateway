@@ -44,7 +44,11 @@ public class AsistenteChatService {
     private static final Pattern NUEVA = Pattern.compile("\\b(redact|gener|cre[ae]|arm[ae]|haz|hacer|elabor)\\w*\\b[^.]*\\bminuta|\\bnueva minuta", Pattern.CASE_INSENSITIVE);
     private static final Pattern POR_VALIDAR = Pattern.compile("por validar|pendientes? de validaci|falta(n)? validar|sin validar", Pattern.CASE_INSENSITIVE);
     private static final Pattern PENDIENTES = Pattern.compile("pendientes?|qu[eé] me falta|qu[eé] tengo", Pattern.CASE_INSENSITIVE);
-    private static final Pattern REPORTE = Pattern.compile("\\b(reporte|informe|eficiencia|productividad)\\b", Pattern.CASE_INSENSITIVE);
+    // 0.0.15: también «Reportes» e «informes» (en plural no entraba y respondía ChatGPT «No tengo acceso a reportes»)
+    private static final Pattern REPORTE = Pattern.compile("\\b(reportes?|informes?|eficiencia|productividad)\\b", Pattern.CASE_INSENSITIVE);
+    private static final LocalDate TODAS_LAS_FECHAS = LocalDate.of(2000, 1, 1);
+    /** 0.0.15: minutas que el técnico aún no termina (estado Pendiente). */
+    private static final Pattern POR_TERMINAR = Pattern.compile("por terminar|sin terminar|falta(n)? terminar|no (ha|han) terminado|a[uú]n no termin|en curso", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONSULTA = Pattern.compile("fecha|cu[aá]ndo|observaci|recomendaci|historial|estado|t[eé]cnico|versi[oó]n|qu[eé] (se )?(vio|encontr)", Pattern.CASE_INSENSITIVE);
     private static final Pattern SEGUIMIENTO = Pattern.compile("^(solo|sin|no de|de |del |ahora|tambien|ademas|excepto|menos)|mes anterior|mes pasado");
     private static final Pattern PROGRESO = Pattern.compile("c[oó]mo voy|qu[eé] me falta|cu[aá]nto (me )?falta|mi progreso|qu[eé] me queda", Pattern.CASE_INSENSITIVE);
@@ -89,7 +93,10 @@ public class AsistenteChatService {
         if ("upd".equals(modo) && minutaId != null) {
             return actualizar(minutaId, texto, user);
         }
-        if ("new".equals(modo) || (modo.isBlank() && !UPD.matcher(texto).find()
+        // 0.0.15: «Hazme un reporte de los técnicos que están por terminar su minuta» pedía datos, no una minuta nueva:
+        // un pedido de reporte, de minutas por validar o por terminar nunca abre «Nueva minuta».
+        boolean pideDatos = REPORTE.matcher(texto).find() || POR_VALIDAR.matcher(texto).find() || POR_TERMINAR.matcher(texto).find();
+        if ("new".equals(modo) || (modo.isBlank() && !pideDatos && !UPD.matcher(texto).find()
                 && (NUEVA.matcher(texto).find() || !adjuntos.isEmpty() || esContextoDeVisita(texto)))) {
             return nueva(texto, adjuntos, tipo, req);
         }
@@ -120,7 +127,7 @@ public class AsistenteChatService {
         if (POR_VALIDAR.matcher(texto).find()) {
             return porValidar(user, visibles);
         }
-        if (REPORTE.matcher(texto).find()) {
+        if (REPORTE.matcher(texto).find() || POR_TERMINAR.matcher(texto).find()) {
             return reporte(texto, req, user, visibles);
         }
         if (PENDIENTES.matcher(texto).find()) {
@@ -443,6 +450,14 @@ public class AsistenteChatService {
     private static final Map<String, List<String>> ESTADOS = new LinkedHashMap<>();
 
     static {
+        // 0.0.15: «por terminar / sin terminar / en curso» = minutas que el técnico aún no termina
+        ESTADOS.put("por terminar", List.of("Pendiente"));
+        ESTADOS.put("sin terminar", List.of("Pendiente"));
+        ESTADOS.put("falta terminar", List.of("Pendiente"));
+        ESTADOS.put("faltan terminar", List.of("Pendiente"));
+        ESTADOS.put("no han terminado", List.of("Pendiente"));
+        ESTADOS.put("no ha terminado", List.of("Pendiente"));
+        ESTADOS.put("en curso", List.of("Pendiente"));
         ESTADOS.put("incomplet", List.of("Pendiente", "En revisión"));
         ESTADOS.put("borrador", List.of("Pendiente"));
         ESTADOS.put("pendiente", List.of("Pendiente"));
@@ -482,7 +497,8 @@ public class AsistenteChatService {
         }
         if (c.get("desde") == null) {
             LocalDate hoy = LocalDate.now();
-            c.put("desde", hoy.withDayOfMonth(1).toString());
+            // 0.0.15: las minutas por terminar se buscan en todas las fechas (una de un mes anterior sigue pendiente)
+            c.put("desde", POR_TERMINAR.matcher(s).find() ? TODAS_LAS_FECHAS.toString() : hoy.withDayOfMonth(1).toString());
             c.put("hasta", hoy.toString());
         }
         c.put("excluir", excluir);
@@ -552,7 +568,8 @@ public class AsistenteChatService {
         } else if (c.get("estados") instanceof List<?> l && !l.isEmpty()) {
             p.add(String.join(" y ", l.stream().map(x -> String.valueOf(x).toLowerCase()).toList()));
         }
-        p.add("del " + LocalDate.parse(str(c.get("desde"))).format(DMY) + " al " + LocalDate.parse(str(c.get("hasta"))).format(DMY));
+        p.add(TODAS_LAS_FECHAS.equals(LocalDate.parse(str(c.get("desde")))) ? "todas las fechas"
+                : "del " + LocalDate.parse(str(c.get("desde"))).format(DMY) + " al " + LocalDate.parse(str(c.get("hasta"))).format(DMY));
         if (c.get("excluir") instanceof List<?> l && !l.isEmpty()) {
             p.add("sin " + l.stream().map(x -> MESES[java.time.YearMonth.parse(String.valueOf(x)).getMonthValue() - 1]).collect(Collectors.joining(", ")));
         }
