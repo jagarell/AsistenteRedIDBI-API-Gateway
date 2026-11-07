@@ -60,6 +60,8 @@ public class AsistenteChatService {
     private final ObjectMapper mapper;
     private final com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
     private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
+    private final ReporteProgramadoRepository programados;
+    private final com.upc.idbi.gateway.notification.UserNotificationRepository notificaciones;
 
     // ---------------------------------------------------------------- entrada
 
@@ -395,6 +397,7 @@ public class AsistenteChatService {
         ESTADOS.put("validada", List.of("Validada"));
     }
 
+    private static final Pattern PROGRAMAR = Pattern.compile("cada fin de mes|fin de mes|todos los meses|cada mes|mensualmente");
     private static final String[] MESES = {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
 
     /** Interpreta el pedido de reporte y, si ya había uno, lo ajusta sin repetir todo («solo el mes anterior», «sin octubre», «de María»). */
@@ -449,6 +452,20 @@ public class AsistenteChatService {
             if (persona != null) {
                 c.put("persona", persona);
             }
+        }
+        if (PROGRAMAR.matcher(s).find()) {
+            // «Cada fin de mes»: el periodo sigue al mes en curso cuando se envíe.
+            Map<String, Object> consulta = new LinkedHashMap<>(c);
+            consulta.remove("desde");
+            consulta.remove("hasta");
+            consulta.put("excluir", List.of());
+            ReporteProgramado p = programados.save(ReporteProgramado.builder().userId(user.id()).frecuencia("fin_de_mes").consultaJson(write(consulta))
+                    .descripcion(descripcion(c).replaceFirst("^.*? · del \\d{2}/\\d{2}/\\d{4} al \\d{2}/\\d{2}/\\d{4}", "").replaceFirst("^ · ", "")).creadoEn(LocalDateTime.now()).build());
+            Map<String, Object> b = bloque("reporte_programado", "Reporte programado", "Listo: cada fin de mes te enviaré este reporte por notificación"
+                    + (p.getDescripcion().isBlank() ? "" : " (" + p.getDescripcion() + ")") + ". Puedes cancelarlo cuando quieras.");
+            b.put("acciones", List.of(accion("cancelar_programado", "Cancelar el envío", false, Map.of("id", p.getId()))));
+            bitacora.registrar(user, null, "aviso", "Programó un reporte de minutas cada fin de mes");
+            return out(b);
         }
         List<Minuta> filas = filtrar(c, user, visibles);
         Map<String, Object> b = bloque("reporte", "Reporte · " + filas.size() + (filas.size() == 1 ? " minuta" : " minutas"),
@@ -830,6 +847,52 @@ public class AsistenteChatService {
             return mapper.writeValueAsString(o);
         } catch (Exception e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    private static String resumen(List<Minuta> l) {
+        long v = l.stream().filter(m -> m.getStatus() == MinutaStatus.VALIDADA).count();
+        long c = l.stream().filter(m -> m.getStatus() == MinutaStatus.COMPLETA).count();
+        long b = l.stream().filter(m -> m.getStatus() == MinutaStatus.BORRADOR).count();
+        return v + " validadas, " + c + " por validar y " + b + " sin terminar";
+    }
+
+    /** Cancela un reporte programado del propio usuario. */
+    public Map<String, Object> cancelarProgramado(Long id, AuthenticatedUser user) {
+        programados.findById(id).filter(p -> Objects.equals(p.getUserId(), user.id())).ifPresent(programados::delete);
+        return out(texto("Listo, ya no te enviaré ese reporte."));
+    }
+
+    /** Último día de cada mes a las 7:00: arma cada reporte programado con el mes en curso y lo envía por notificación. */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 7 * * *")
+    public void enviarProgramados() {
+        LocalDate hoy = LocalDate.now();
+        if (hoy.getDayOfMonth() != hoy.lengthOfMonth()) {
+            return;
+        }
+        for (ReporteProgramado p : programados.findAll()) {
+            try {
+                if (p.getUltimoEnvio() != null && p.getUltimoEnvio().toLocalDate().equals(hoy)) {
+                    continue;
+                }
+                UserEntity u = users.findById(p.getUserId()).orElse(null);
+                if (u == null) {
+                    continue;
+                }
+                AuthenticatedUser au = new AuthenticatedUser(u.getId(), u.getEmail(), u.getFullName(), u.getRole());
+                Map<String, Object> c = read(p.getConsultaJson());
+                c.put("desde", hoy.withDayOfMonth(1).toString());
+                c.put("hasta", hoy.toString());
+                List<Minuta> filas = filtrar(c, au, visibles(au));
+                String cuerpo = "Reporte de fin de mes: " + filas.size() + (filas.size() == 1 ? " minuta" : " minutas") + " del " + hoy.withDayOfMonth(1).format(DMY)
+                        + " al " + hoy.format(DMY) + ". " + resumen(filas) + ". Pídele al Asistente IA el detalle o el Excel.";
+                notificaciones.save(com.upc.idbi.gateway.notification.UserNotification.builder().userId(u.getId()).title("Reporte de fin de mes").body(cuerpo)
+                        .type("REPORTE_PROGRAMADO").createdAt(LocalDateTime.now()).build());
+                p.setUltimoEnvio(LocalDateTime.now());
+                programados.save(p);
+            } catch (RuntimeException ignored) {
+                // un reporte que falla no debe frenar a los demás
+            }
         }
     }
 }

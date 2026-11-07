@@ -31,6 +31,12 @@ public class AsistenteController {
         return chat.mensaje(req, user);
     }
 
+    /** Cancela un reporte programado (el botón «Cancelar el envío» de la tarjeta). */
+    @PostMapping("/api/asistente/programados/{id}/cancelar")
+    public Map<String, Object> cancelarProgramado(@org.springframework.web.bind.annotation.PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
+        return chat.cancelarProgramado(id, user);
+    }
+
     /** «Redactar minuta» del borrador que armó el asistente. */
     @PostMapping("/api/asistente/redactar")
     public Map<String, Object> redactar(@RequestBody Map<String, Object> req, @AuthenticationPrincipal AuthenticatedUser user) {
