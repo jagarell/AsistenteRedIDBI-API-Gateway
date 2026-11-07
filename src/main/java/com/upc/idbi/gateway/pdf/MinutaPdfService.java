@@ -69,6 +69,10 @@ public class MinutaPdfService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.upc.idbi.gateway.minuta.MinutaRepository minutaRepository;
 
+    /** Nombre y logo de la empresa (Perfil y configuración › Empresa); opcional para poder armar el servicio sin Spring en las pruebas. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.upc.idbi.gateway.empresa.EmpresaService empresa;
+
     private final TemplateEngine templateEngine = buildTemplateEngine();
 
     public byte[] generate(Long evaluationId) {
@@ -160,6 +164,8 @@ public class MinutaPdfService {
     public byte[] render(Map<String, Object> document, List<Evidence> evidences, Long evaluationId, String watermark) {
         Context ctx = new Context();
         ctx.setVariable("doc", document);
+        ctx.setVariable("empresaNombre", empresa == null ? "IDBI" : empresa.nombre());
+        ctx.setVariable("empresaLogo", empresa == null ? null : empresa.logoDataUri());
         String map = (String) document.get("mapPngBase64");
         ctx.setVariable("mapImage", map == null || map.isBlank() ? null : "data:image/png;base64," + map);
 

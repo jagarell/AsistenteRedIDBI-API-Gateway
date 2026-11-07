@@ -28,6 +28,7 @@ import java.util.List;
 public class MinutaController {
 
     private final MinutaService service;
+    private final com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
     @GetMapping
     public List<MinutaResponse> list(
@@ -50,7 +51,9 @@ public class MinutaController {
             @Valid @RequestBody MinutaRequest request,
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        return MinutaResponse.from(service.create(request, user));
+        Minuta m = service.create(request, user);
+        bitacora.registrar(user, m.getId(), "crear", "Creó la minuta de " + m.getClientName());
+        return MinutaResponse.from(m);
     }
 
     @PutMapping("/{id}")
@@ -59,13 +62,17 @@ public class MinutaController {
             @Valid @RequestBody MinutaRequest request,
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        return MinutaResponse.from(service.update(id, request, user));
+        Minuta m = service.update(id, request, user);
+        bitacora.registrar(user, id, "editar", "Editó la minuta de " + m.getClientName());
+        return MinutaResponse.from(m);
     }
 
     /** Marca la minuta como COMPLETA (lista para validación del supervisor). */
     @PostMapping("/{id}/completar")
-    public MinutaResponse complete(@PathVariable Long id) {
-        return MinutaResponse.from(service.complete(id));
+    public MinutaResponse complete(@PathVariable Long id, @AuthenticationPrincipal AuthenticatedUser user) {
+        Minuta m = service.complete(id);
+        bitacora.registrar(user, id, "solicitar", "Solicitó la validación de la minuta de " + m.getClientName());
+        return MinutaResponse.from(m);
     }
 
     /** Valida una minuta completa. Sólo supervisores. */
@@ -75,7 +82,9 @@ public class MinutaController {
             @PathVariable Long id,
             @AuthenticationPrincipal AuthenticatedUser supervisor
     ) {
-        return MinutaResponse.from(service.validate(id, supervisor));
+        Minuta m = service.validate(id, supervisor);
+        bitacora.registrar(supervisor, id, "validar", "Validó la minuta de " + m.getClientName());
+        return MinutaResponse.from(m);
     }
 
     /** Devuelve una minuta completa al técnico con el motivo. Sólo supervisores. */
@@ -86,7 +95,9 @@ public class MinutaController {
             @RequestBody RejectRequest request,
             @AuthenticationPrincipal AuthenticatedUser supervisor
     ) {
-        return MinutaResponse.from(service.reject(id, request.reason(), supervisor));
+        Minuta m = service.reject(id, request.reason(), supervisor);
+        bitacora.registrar(supervisor, id, "rechazar", "Rechazó la minuta de " + m.getClientName() + ": " + request.reason());
+        return MinutaResponse.from(m);
     }
 
     public record RejectRequest(String reason) {

@@ -21,6 +21,8 @@ public class UserNotificationController {
     private final com.upc.idbi.gateway.minuta.MinutaRepository minutas;
     private final com.upc.idbi.gateway.auth.UserRepository users;
     private final PushNotificationService push;
+    private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
+    private final com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
 
     @GetMapping
     public Map<String, Object> mine(@AuthenticationPrincipal AuthenticatedUser user) {
@@ -52,7 +54,7 @@ public class UserNotificationController {
      */
     @GetMapping("/bandeja")
     public Map<String, Object> bandeja(@AuthenticationPrincipal AuthenticatedUser user) {
-        var todas = minutas.findAllByOrderByCreatedAtDesc();
+        var todas = minutas.findAllByOrderByCreatedAtDesc().stream().filter(empresa::visible).toList();
         java.util.List<String> nombresEquipo = new java.util.ArrayList<>();
         java.util.List<com.upc.idbi.gateway.minuta.Minuta> alcance;
         if (user.isAdmin()) {
@@ -153,6 +155,7 @@ public class UserNotificationController {
         if (destino == null) {
             throw new IllegalArgumentException("No hay a quién avisar");
         }
+        bitacora.registrar(user, m.getId(), "aviso", texto);
         repository.save(UserNotification.builder().userId(destino.getId()).title("Recordatorio").body(texto).type("RECORDATORIO")
                 .minutaId(m.getId()).evaluationId(m.getEvaluationId()).createdAt(LocalDateTime.now()).build());
         push.trySend(destino.getFcmToken(), "Recordatorio", texto, Map.of("type", "RECORDATORIO", "minutaId", String.valueOf(m.getId())));

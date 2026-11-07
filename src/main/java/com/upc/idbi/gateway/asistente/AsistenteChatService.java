@@ -58,6 +58,8 @@ public class AsistenteChatService {
     private final FichaConocimientoRepository fichas;
     private final AprendizajeService aprendizaje;
     private final ObjectMapper mapper;
+    private final com.upc.idbi.gateway.bitacora.BitacoraService bitacora;
+    private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
 
     // ---------------------------------------------------------------- entrada
 
@@ -230,7 +232,8 @@ public class AsistenteChatService {
                 .tipo("IMPLEMENTACION").version(1).rubro(str(d.get("rubro")))
                 .summary("Minuta redactada con el Asistente IA.")
                 .topologyJson(topologia(ex.get("conexiones")))
-                .contentJson(write(content)).createdAt(now).updatedAt(now).build());
+                .contentJson(write(content)).etapa(empresa.enProduccion() ? "produccion" : null).createdAt(now).updatedAt(now).build());
+        bitacora.registrar(user, m.getId(), "crear", "Redactó la minuta de " + local + " con el Asistente IA");
         return out(texto("Listo: redacté la minuta de " + local + " (Pendiente). Te llevo a Ver minuta para que la revises."),
                 accionBloque("abrir_minuta", m.getId()));
     }
@@ -615,7 +618,7 @@ public class AsistenteChatService {
     // ---------------------------------------------------------------- utilidades de datos
 
     private List<Minuta> visibles(AuthenticatedUser user) {
-        return minutas.findAllByOrderByCreatedAtDesc();
+        return empresa.contadas(minutas.findAllByOrderByCreatedAtDesc());
     }
 
     /** Lo que cada rol puede sumar: el técnico, lo suyo; el supervisor, su equipo; el administrador, todo. */

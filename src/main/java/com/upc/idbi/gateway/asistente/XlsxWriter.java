@@ -11,12 +11,12 @@ import java.util.zip.ZipOutputStream;
  * Escribe un .xlsx mínimo (una hoja) sin dependencias: título, fecha de generación, encabezados en negrita con filtro y datos.
  * Los valores numéricos (Integer, Long, Double) quedan como número; el resto, como texto.
  */
-final class XlsxWriter {
+public final class XlsxWriter {
 
     private XlsxWriter() {
     }
 
-    static byte[] hoja(String titulo, String generado, List<String> encabezados, List<List<Object>> filas) {
+    public static byte[] hoja(String titulo, String generado, List<String> encabezados, List<List<Object>> filas) {
         StringBuilder s = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
         s.append("<cols>");
         for (int i = 0; i < encabezados.size(); i++) {

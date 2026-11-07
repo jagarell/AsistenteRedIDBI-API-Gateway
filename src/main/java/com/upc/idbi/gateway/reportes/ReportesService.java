@@ -35,6 +35,7 @@ public class ReportesService {
     private final MinutaRepository minutas;
     private final UserRepository users;
     private final RoleService roles;
+    private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
 
     public record Fila(Long id, LocalDateTime fecha, Long tecnicoId, String tecnico, String supervisor, String local, String rubro,
                        String estado, String criticidad, Integer puntaje, String esfuerzo, String plazo, Integer minutos, String tipo,
@@ -152,7 +153,7 @@ public class ReportesService {
             supDe.put(u.getFullName(), s == null ? "—" : s.getFullName());
         }
         LocalDateTime ahora = LocalDateTime.now();
-        List<Fila> todas = minutas.findAllByOrderByCreatedAtDesc().stream().map(m -> new Fila(m.getId(), m.getCreatedAt(), m.getTechnicianId(),
+        List<Fila> todas = empresa.contadas(minutas.findAllByOrderByCreatedAtDesc()).stream().map(m -> new Fila(m.getId(), m.getCreatedAt(), m.getTechnicianId(),
                 m.getTechnicianName(), supDe.getOrDefault(m.getTechnicianName(), "—"), m.getClientName(), m.getRubro() == null ? "—" : m.getRubro(),
                 estadoDe(m), criticidadDe(m.getPuntaje()), m.getPuntaje(), m.getEsfuerzo() == null ? "Básica" : m.getEsfuerzo(), plazoDe(m, ahora),
                 m.getMinutosElaboracion(), m.getTipo() == null ? "IMPLEMENTACION" : m.getTipo(), m.getEvaluationId())).toList();

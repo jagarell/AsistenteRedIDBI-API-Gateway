@@ -141,6 +141,13 @@ public class Minuta {
     @Column(name = "estado_soporte", length = 5)
     private String estadoSoporte;
 
+    /** Etapa de la minuta: «demo» (anterior a pasar a producción) o nulo/«produccion». */
+    @Column(length = 12)
+    private String etapa;
+
+    /** Falso para las minutas demo en Borrador o Pendiente que dejan de verse al pasar a producción. */
+    private Boolean visible;
+
     public boolean isSoporte() {
         return "SOPORTE".equals(tipo);
     }

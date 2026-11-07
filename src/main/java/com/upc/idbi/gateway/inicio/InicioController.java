@@ -31,10 +31,11 @@ public class InicioController {
 
     private final MinutaRepository minutas;
     private final UserRepository users;
+    private final com.upc.idbi.gateway.empresa.EmpresaService empresa;
 
     @GetMapping("/indicadores")
     public Map<String, Object> indicadores(@AuthenticationPrincipal AuthenticatedUser me) {
-        List<Minuta> todas = minutas.findAllByOrderByCreatedAtDesc();
+        List<Minuta> todas = empresa.contadas(minutas.findAllByOrderByCreatedAtDesc());
         List<Minuta> alcance;
         if (me.isAdmin()) {
             alcance = todas;

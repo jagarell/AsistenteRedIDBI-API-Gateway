@@ -93,6 +93,12 @@ public class GlobalExceptionHandler {
         return Map.of("message", "No se pudo completar la operación, intenta de nuevo en unos segundos.");
     }
 
+    /** Errores con su propio código (por ejemplo 409 al pasar dos veces a producción, 400 en el logo): se respetan, no caen en el 500. */
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public org.springframework.http.ResponseEntity<Map<String, String>> handleStatus(org.springframework.web.server.ResponseStatusException exception) {
+        return org.springframework.http.ResponseEntity.status(exception.getStatusCode()).body(Map.of("message", exception.getReason() == null ? "No se pudo completar la acción." : exception.getReason()));
+    }
+
     /** Una acción que exige otro rol (por ejemplo validar o rechazar sin ser supervisor) responde 403, no 500. */
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     @ResponseStatus(HttpStatus.FORBIDDEN)
