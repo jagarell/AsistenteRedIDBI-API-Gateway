@@ -45,7 +45,7 @@ public class ReportesService {
                           Set<String> criticidad, Set<String> esfuerzo, Set<String> plazo) {
     }
 
-    static String estadoDe(Minuta m) {
+    public static String estadoDe(Minuta m) {
         if (m.getStatus() == MinutaStatus.VALIDADA) {
             return "Validada";
         }
@@ -55,7 +55,7 @@ public class ReportesService {
         return m.getRejectionReason() != null && !m.getRejectionReason().isBlank() ? "En revisión" : "Pendiente";
     }
 
-    static String criticidadDe(Integer p) {
+    public static String criticidadDe(Integer p) {
         return p == null ? "Sin análisis" : p < 60 ? "Riesgo" : p < 80 ? "Observado" : "Viable";
     }
 
