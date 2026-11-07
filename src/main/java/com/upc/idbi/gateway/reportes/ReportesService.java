@@ -61,7 +61,7 @@ public class ReportesService {
     }
 
     /** Plazo por nivel de esfuerzo (Plazos de la empresa): Básica mismo día, Intermedia 1 día, Compleja 2 días. */
-    static String plazoDe(Minuta m, LocalDateTime ahora) {
+    public static String plazoDe(Minuta m, LocalDateTime ahora) {
         String e = m.getEsfuerzo() == null ? "Básica" : m.getEsfuerzo();
         LocalDateTime limite = m.getCreatedAt().toLocalDate().plusDays("Compleja".equals(e) ? 2 : "Intermedia".equals(e) ? 1 : 0).atTime(23, 59);
         boolean terminada = m.getStatus() != MinutaStatus.BORRADOR;
