@@ -17,6 +17,8 @@ public record ChatAnswerRequest(
         // Nota opcional de «Guardar como correcta».
         String nota,
         // Foto pendiente de «Subir después» (EV#Calientes) que se sube al final; null = nodo actual.
-        String nodeId
+        String nodeId,
+        // 0.0.15: descripción opcional de la foto («¿Qué muestra esta foto?»). Sale debajo de la foto en la minuta.
+        String descripcion
 ) {
 }

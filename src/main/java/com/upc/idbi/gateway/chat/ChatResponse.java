@@ -38,6 +38,8 @@ public record ChatResponse(
         // Respuestas que vinieron de un adjunto (llevan un clip en la burbuja).
         List<String> attachedNodeIds,
         // Fotos obligatorias dejadas con «Subir después»: [{nodeId, name, text}]. Mientras haya, no se genera la minuta.
-        List<Map<String, Object>> pendingMandatory
+        List<Map<String, Object>> pendingMandatory,
+        // 0.0.15: descripción de cada evidencia por nodeId (EV#Frontis del local, E1, E5a#Cocina…)
+        Map<String, String> evidenceNotes
 ) {
 }
