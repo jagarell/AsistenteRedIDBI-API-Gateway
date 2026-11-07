@@ -65,13 +65,22 @@ public class BitacoraController {
 
         Bitacora crear = ev.stream().filter(b -> "crear".equals(b.getTipo())).reduce((x, y) -> y).orElse(null);
         String herramienta = crear != null && crear.getAccion() != null && crear.getAccion().contains("Asistente IA") ? "Asistente IA" : "Chat IA";
-        // Quién la corrigió después de un rechazo: el primer «Solicitó la validación» posterior al rechazo.
+        // El rechazo se sigue viendo aunque la minuta ya se haya corregido (al volver a solicitarla se limpian los datos de la minuta):
+        // se toma del último evento «Rechazó la minuta», y la corrige quien la solicita de nuevo después de ese rechazo.
+        Bitacora rechazo = ev.stream().filter(b -> "rechazar".equals(b.getTipo())).findFirst().orElse(null);
+        String rechazadaPor = m.getRejectedByName() != null ? m.getRejectedByName() : rechazo == null ? null : rechazo.getUsuarioNombre();
+        LocalDateTime rechazadaTs = m.getRejectedAt() != null ? m.getRejectedAt() : rechazo == null ? null : rechazo.getTs();
+        String motivo = m.getRejectionReason();
+        if ((motivo == null || motivo.isBlank()) && rechazo != null && rechazo.getAccion() != null) {
+            int i = rechazo.getAccion().indexOf(": ");
+            motivo = i >= 0 ? rechazo.getAccion().substring(i + 2) : null;
+        }
         String corregidaPor = null;
         String corregidaEn = null;
-        if (m.getRejectedAt() != null) {
+        if (rechazadaTs != null) {
             for (int i = ev.size() - 1; i >= 0; i--) {
                 Bitacora b = ev.get(i);
-                if ("solicitar".equals(b.getTipo()) && b.getTs().isAfter(m.getRejectedAt())) {
+                if ("solicitar".equals(b.getTipo()) && b.getTs().isAfter(rechazadaTs)) {
                     corregidaPor = b.getUsuarioNombre();
                     corregidaEn = b.getTs().format(f);
                     break;
@@ -84,9 +93,9 @@ public class BitacoraController {
         r.put("herramienta", herramienta);
         r.put("estado", com.upc.idbi.gateway.reportes.ReportesService.estadoDe(m));
         r.put("version", m.versionOrOne());
-        r.put("rechazadaPor", m.getRejectedByName());
-        r.put("rechazadaEn", m.getRejectedAt() == null ? null : m.getRejectedAt().format(f));
-        r.put("motivo", m.getRejectionReason());
+        r.put("rechazadaPor", rechazadaPor);
+        r.put("rechazadaEn", rechazadaTs == null ? null : rechazadaTs.format(f));
+        r.put("motivo", motivo);
         r.put("corregidaPor", corregidaPor);
         r.put("corregidaEn", corregidaEn);
         r.put("validadaPor", m.getValidatedByName());

@@ -113,11 +113,9 @@ public class TiemposController {
                 previo.put(e.getKey(), ((Number) e.getValue()).doubleValue());
             }
         }
+        // Todos los tipos de local de cualquiera de los dos meses; el que no tiene dato en un mes muestra «—».
         TreeSet<String> rubros = new TreeSet<>(real.keySet());
-        rubros.retainAll(manual ? previo.keySet() : previo.keySet());
-        if (rubros.isEmpty()) {
-            rubros.addAll(real.keySet());
-        }
+        rubros.addAll(previo.keySet());
         List<Map<String, Object>> filas = new ArrayList<>();
         double sumaMejora = 0;
         int n = 0;
