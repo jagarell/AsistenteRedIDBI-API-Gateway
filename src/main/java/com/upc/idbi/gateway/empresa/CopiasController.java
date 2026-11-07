@@ -135,6 +135,24 @@ public class CopiasController {
             put(z, "minutas.json", mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(json));
             put(z, "minutas.xlsx", XlsxWriter.hoja("Copia de seguridad · " + empresaService.nombre(), "Generada el " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
                     List.of("Local", "Técnico", "Estado", "Puntaje", "Fecha", "Dirección"), filas));
+            // «Incluir fotos»: las fotos subidas a cada minuta y las evidencias de su evaluación (hasta ~150 MB en total).
+            if (Boolean.TRUE.equals(empresaService.get().getCopiaIncluyeFotos())) {
+                long[] total = {0};
+                for (Minuta m : todas) {
+                    for (Path carpeta : new Path[]{Path.of(uploadsDir, "minutas", String.valueOf(m.getId())),
+                            m.getEvaluationId() == null ? null : Path.of(uploadsDir, "evidence", String.valueOf(m.getEvaluationId()))}) {
+                        if (carpeta == null || !Files.isDirectory(carpeta)) continue;
+                        try (var archivos = Files.list(carpeta)) {
+                            for (Path f : (Iterable<Path>) archivos.filter(Files::isRegularFile)::iterator) {
+                                long tam = Files.size(f);
+                                if (total[0] + tam > 150L * 1024 * 1024) break;
+                                total[0] += tam;
+                                put(z, "fotos/minuta-" + m.getId() + "/" + f.getFileName(), Files.readAllBytes(f));
+                            }
+                        }
+                    }
+                }
+            }
             z.finish();
             byte[] zip = bo.toByteArray();
             String nombre = "copia-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".zip";

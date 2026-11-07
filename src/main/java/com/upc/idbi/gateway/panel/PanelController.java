@@ -99,7 +99,13 @@ public class PanelController {
                 Set<Long> suyos = users.findByRole(Role.TECNICO).stream().filter(t -> s.getId().equals(t.getSupervisorId()))
                         .map(UserEntity::getId).collect(Collectors.toSet());
                 long pend = todas.stream().filter(m -> m.getStatus() == MinutaStatus.COMPLETA && suyos.contains(m.getTechnicianId())).count();
-                porSup.add(Map.of("supervisor", s.getFullName(), "tecnicos", suyos.size(), "porValidar", pend));
+                // Horas que llevan esperando, en promedio, las minutas que ese supervisor tiene por validar (meta: 24 h).
+                OptionalDouble espera = todas.stream().filter(m -> m.getStatus() == MinutaStatus.COMPLETA && suyos.contains(m.getTechnicianId()))
+                        .mapToDouble(m -> java.time.Duration.between(m.getUpdatedAt() != null ? m.getUpdatedAt() : m.getCreatedAt(), LocalDateTime.now()).toMinutes() / 60.0).average();
+                Map<String, Object> fila = new LinkedHashMap<>();
+                fila.put("supervisor", s.getFullName()); fila.put("tecnicos", suyos.size()); fila.put("porValidar", pend);
+                fila.put("horasEspera", espera.isPresent() ? Math.round(espera.getAsDouble() * 10) / 10.0 : null);
+                porSup.add(fila);
             }
             out.put("porSupervisor", porSup);
             out.put("usuarios", users.count());
@@ -178,6 +184,11 @@ public class PanelController {
         ind.put("validadas", val);
         ind.put("validadasPct", en.isEmpty() ? 0 : Math.round(100.0 * val / en.size()));
         ind.put("horasAhorradas", horas);
+        // Subtítulos reales de las tarjetas (antes eran textos fijos): pendientes con análisis IA listo y reducción de tiempo por minuta.
+        ind.put("pendientesConAnalisis", en.stream().filter(m -> "Pendiente".equals(ReportesService.estadoDe(m)) && m.getPuntaje() != null).count());
+        OptionalDouble promMin = en.stream().filter(m -> m.getMinutosElaboracion() != null).mapToInt(Minuta::getMinutosElaboracion).average();
+        // Sin la app una minuta tomaba 1,5 h más (HORAS_POR_MINUTA): la reducción es ese ahorro sobre el tiempo que habría tomado.
+        ind.put("ahorroPct", promMin.isPresent() ? Math.round(100.0 * HORAS_POR_MINUTA * 60 / (promMin.getAsDouble() + HORAS_POR_MINUTA * 60)) : null);
 
         // Por día: la unidad cambia con el filtro (hora, día, semana, mes, año).
         List<Minuta> hechas = en.stream().filter(m -> !"Pendiente".equals(ReportesService.estadoDe(m))).toList();
