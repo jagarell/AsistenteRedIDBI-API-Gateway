@@ -87,7 +87,8 @@ table.grid.c3 img { max-height: 48mm; }
   <table th:if="${b.t == 'kv'}" class="t">
     <tr th:each="r : ${b.rows}" th:class="${r.pending} ? 'pending'">
       <td class="k" th:text="${r.label}">Campo</td>
-      <td th:if="${r.pending == null or !r.pending}" th:class="${r.bad} ? 'bad'" th:text="${r.value}">Valor</td>
+      <td th:if="${(r.pending == null or !r.pending) and r.href == null}" th:class="${r.bad} ? 'bad'" th:text="${r.value}">Valor</td>
+      <td th:if="${(r.pending == null or !r.pending) and r.href != null}"><a th:href="${r.href}" th:text="${r.value}" style="color:#1565c0">Enlace</a></td>
       <td th:if="${r.pending != null and r.pending}" class="pend"><b>Pendiente</b> · <span th:text="${r.note}">nota</span></td>
     </tr>
   </table>
