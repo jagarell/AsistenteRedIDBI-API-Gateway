@@ -49,7 +49,21 @@ public class RoleService {
         if (repository.count() == 0) {
             repository.saveAll(defaults());
         }
-        return repository.findAll();
+        List<RolePermission> all = repository.findAll();
+        // El rol de Supervisor siempre debe poder validar y devolver minutas (y el de Técnico crear las suyas): si una base
+        // antigua quedó sin esas casillas bloqueadas, se restituyen aquí.
+        for (RolePermission r : all) {
+            Set<String> locked = LOCKED.get(r.getId());
+            if (locked == null || "admin".equals(r.getId())) {
+                continue;
+            }
+            Set<String> p = new LinkedHashSet<>(r.permSet());
+            if (p.addAll(locked)) {
+                r.setPermSet(p);
+                repository.save(r);
+            }
+        }
+        return all;
     }
 
     public static String idOf(Role role) {
