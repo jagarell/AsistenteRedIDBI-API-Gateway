@@ -537,42 +537,67 @@ async function verMapa(eid) {
   let m;
   try { const g = await api(`/api/evaluations/${eid}/map`); m = g && g.map; if (!m) { const r = await api(`/api/evaluations/${eid}/map/generate`, { method: 'POST', body: {} }); m = r.map || r; } } catch (e) { toast(errTxt(e)); return; }
   const W = 1000, bw = 150, bh = 56;
-  let sel = null, selL = null, conectando = false, dirty = false;
+  let sel = null, selL = null, selT = null, conectando = false, dirty = false, zoom = 1;
   const H = () => m.canvasH || 800;
   const col = n => n.status === 'broken' ? 'var(--err)' : n.pending ? '#F57C00' : 'var(--pri)';
   const d = dialogo(`<div class="row" style="padding:0 4px 8px"><b>Mapa de red</b><span class="chip warn" id="mdirty" style="display:none">Cambios sin guardar</span><span class="sp"></span><button class="btn sm fill" id="msave" disabled>Guardar mapa</button><button class="btn sm" id="mclose">Cerrar</button></div>
     <div class="row" style="padding:0 4px 8px"><select id="mtipo" aria-label="Tipo de equipo">${TIPOS_EQ.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select><button class="btn sm" id="madd">+ Agregar equipo</button>
-      <button class="btn sm" id="mcon" disabled>Conectar con…</button><button class="btn sm danger" id="mdel" disabled>Eliminar</button>
-      <span id="mfld" class="row" style="display:none"><input type="text" id="mlab" placeholder="Nombre" style="width:150px" aria-label="Nombre del equipo"><input type="text" id="mip" placeholder="IP" style="width:120px" aria-label="IP del equipo"></span></div>
-    <div class="tiny" id="mayuda" style="padding:0 4px 8px">Arrastra los equipos · toca uno o una línea para seleccionarla · naranja punteado = por implementar · violeta punteada = WiFi · roja = observada</div>
-    <div style="flex:1;overflow:auto;background:var(--s2);border-radius:10px"><svg id="msvg" style="width:100%;min-width:760px;height:auto;touch-action:none" role="img" aria-label="Topología de red"></svg></div>
+      <button class="btn sm" id="mcon" disabled>Conectar con…</button><button class="btn sm danger" id="mdel" disabled>Eliminar</button><button class="btn sm" id="mtxtadd">+ Texto</button><span class="sp"></span>
+      <button class="btn sm" id="mzm" aria-label="Alejar">−</button><span class="tiny" id="mzv">100 %</span><button class="btn sm" id="mzp" aria-label="Acercar">+</button><button class="btn sm" id="mzr">Ajustar</button></div>
+    <div class="row" id="mprop" style="padding:0 4px 8px;display:none">
+      <span id="mfld" class="row" style="display:none"><input type="text" id="mlab" placeholder="Nombre" style="width:150px" aria-label="Nombre del equipo"><input type="text" id="mip" placeholder="IP" style="width:120px" aria-label="IP del equipo"><label class="row tiny"><input type="checkbox" id="mbroken"> Averiado</label><label class="row tiny"><input type="checkbox" id="musb"> USB (sin IP)</label></span>
+      <span id="mlnk" class="row" style="display:none"><select id="mstyle" aria-label="Tipo de conexión"><option value="cable">Cable</option><option value="main">Cable principal</option><option value="wifi">WiFi</option><option value="camera">Cámara</option><option value="usb">USB (flecha)</option></select><label class="row tiny"><input type="checkbox" id="mobs"> Con falla (roja)</label></span>
+      <span id="mtx" class="row" style="display:none"><input type="text" id="mttxt" placeholder="Texto" style="width:220px" aria-label="Texto del mapa"><select id="mtsize" aria-label="Tamaño"><option value="S">Pequeño</option><option value="M">Mediano</option><option value="L">Grande</option></select></span></div>
+    <div class="tiny" id="mayuda" style="padding:0 4px 8px">Arrastra los equipos · toca uno, una línea o un texto para seleccionarlo · naranja punteado = por implementar · violeta punteada = WiFi · roja = con falla · flecha = USB</div>
+    <div id="mscroll" style="flex:1;overflow:auto;background:var(--s2);border-radius:10px"><svg id="msvg" style="width:100%;min-width:760px;height:auto;touch-action:none" role="img" aria-label="Topología de red"></svg></div>
     <form id="mcmd" class="row" style="padding:10px 4px 0"><input type="text" id="mtxt" placeholder="Pide un cambio al mapa… (ej.: agrega un switch junto al router)" style="flex:1" autocomplete="off">${micBtn('mmic')}<button class="btn fill">Aplicar</button></form><div id="mrep" class="tiny" style="padding:6px 4px 0"></div>`, true);
   const el = s => $(s, d.el);
   const marcar = v => { dirty = v; el('#mdirty').style.display = v ? '' : 'none'; el('#msave').disabled = !v; el('#mclose').textContent = v ? 'Descartar y cerrar' : 'Cerrar'; };
-  const ayuda = t => { el('#mayuda').textContent = t || 'Arrastra los equipos · toca uno o una línea para seleccionarla · naranja punteado = por implementar · violeta punteada = WiFi · roja = observada'; };
+  const ayuda = t => { el('#mayuda').textContent = t || 'Arrastra los equipos · toca uno, una línea o un texto para seleccionarlo · naranja punteado = por implementar · violeta punteada = WiFi · roja = con falla · flecha = USB'; };
   const dibujar = () => {
     const byId = Object.fromEntries((m.nodes || []).map(n => [n.id, n])), h = H();
     const svg = el('#msvg'); svg.setAttribute('viewBox', `0 0 ${W} ${h}`);
     const pos = n => ({ x: n.x * W, y: n.y * h });
     const links = (m.links || []).map(l => { const a = byId[l.source], b = byId[l.target]; if (!a || !b) return ''; const p = pos(a), q = pos(b), on = l.id === selL;
       const c = l.observed ? 'var(--err)' : l.color || (l.style === 'wifi' ? '#7E57C2' : 'var(--pri)');
-      return `<g data-l="${esc(l.id)}" style="cursor:pointer"><line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="transparent" stroke-width="16"/><line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${on ? 'var(--tx)' : c}" stroke-width="${(l.style === 'main' ? 4 : 2.5) + (on ? 2 : 0)}" ${l.style === 'wifi' ? 'stroke-dasharray="7 6"' : ''}/></g>`; }).join('');
+      const usb = l.style === 'usb' || l.style === 'dotted', cam = l.style === 'camera';
+      return `<g data-l="${esc(l.id)}" style="cursor:pointer"><line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="transparent" stroke-width="16"/><line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${on ? 'var(--tx)' : usb && !l.observed ? 'var(--tx2)' : c}" stroke-width="${(l.style === 'main' ? 4 : 2.5) + (on ? 2 : 0)}" ${l.style === 'wifi' || l.style === 'dashed' ? 'stroke-dasharray="7 6"' : cam ? 'stroke-dasharray="3 4"' : ''} ${usb ? 'marker-end="url(#mflecha)"' : ''}/></g>`; }).join('');
     const nodes = (m.nodes || []).map(n => { const p = pos(n), c = col(n), on = n.id === sel;
       return `<g data-n="${esc(n.id)}" style="cursor:${conectando ? 'crosshair' : 'grab'}"><rect x="${p.x - bw / 2}" y="${p.y - bh / 2}" width="${bw}" height="${bh}" rx="12" fill="var(--s1)" stroke="${on ? 'var(--tx)' : c}" stroke-width="${on ? 4 : 2.5}" ${n.pending ? 'stroke-dasharray="6 4"' : ''}/>
         <text x="${p.x}" y="${p.y - 4}" text-anchor="middle" font-size="14" font-weight="700" fill="var(--tx)" pointer-events="none">${esc(String(n.label).slice(0, 20))}</text>
-        <text x="${p.x}" y="${p.y + 14}" text-anchor="middle" font-size="11" fill="var(--tx2)" pointer-events="none">${esc(String(n.ip || n.detail || n.location || (n.pending ? 'Por implementar' : '')).slice(0, 24))}</text></g>`; }).join('');
-    svg.innerHTML = links + nodes;
-    const n = sel && m.nodes.find(x => x.id === sel);
-    el('#mdel').disabled = !(sel || selL); el('#mcon').disabled = !sel; el('#mcon').textContent = conectando ? 'Cancelar conexión' : 'Conectar con…';
-    el('#mfld').style.display = n ? '' : 'none';
-    if (n) { if (document.activeElement !== el('#mlab')) el('#mlab').value = n.label || ''; if (document.activeElement !== el('#mip')) el('#mip').value = n.ip || ''; }
+        <text x="${p.x}" y="${p.y + 14}" text-anchor="middle" font-size="11" fill="${n.ipBad ? 'var(--err)' : 'var(--tx2)'}" pointer-events="none">${esc(String(n.usb ? 'USB · sin IP' : (n.ip || n.detail || n.location || (n.pending ? 'Por implementar' : ''))).slice(0, 24))}</text>${n.status === 'broken' ? `<text x="${p.x + bw / 2 - 6}" y="${p.y - bh / 2 + 4}" text-anchor="end" font-size="12" font-weight="700" fill="var(--err)" pointer-events="none">✕ avería</text>` : ''}</g>`; }).join('');
+    const tam = { S: 12, M: 15, L: 20 };
+    const textos = (m.texts || []).map(t => { const p = pos(t), fs = tam[t.size] || 15, w = Math.max(40, String(t.text).length * fs * 0.58 + 16), on = t.id === selT;
+      return `<g data-t="${esc(t.id)}" style="cursor:grab"><rect x="${p.x - w / 2}" y="${p.y - fs}" width="${w}" height="${fs * 1.9}" rx="6" fill="${esc(t.color || '#FFF4CC')}" stroke="${on ? 'var(--tx)' : '#C9B458'}" stroke-width="${on ? 3 : 1}"/><text x="${p.x}" y="${p.y + fs * 0.3}" text-anchor="middle" font-size="${fs}" fill="#333" pointer-events="none">${esc(String(t.text))}</text></g>`; }).join('');
+    svg.innerHTML = `<defs><marker id="mflecha" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--tx2)"/></marker></defs>` + links + nodes + textos;
+    const n = sel && m.nodes.find(x => x.id === sel), lk = selL && (m.links || []).find(x => x.id === selL), tx = selT && (m.texts || []).find(x => x.id === selT);
+    el('#mdel').disabled = !(sel || selL || selT); el('#mcon').disabled = !sel; el('#mcon').textContent = conectando ? 'Cancelar conexión' : 'Conectar con…';
+    el('#mprop').style.display = (n || lk || tx) ? '' : 'none';
+    el('#mfld').style.display = n ? '' : 'none'; el('#mlnk').style.display = lk ? '' : 'none'; el('#mtx').style.display = tx ? '' : 'none';
+    if (n) { if (document.activeElement !== el('#mlab')) el('#mlab').value = n.label || ''; if (document.activeElement !== el('#mip')) el('#mip').value = n.ip || ''; el('#mbroken').checked = n.status === 'broken'; el('#musb').checked = !!n.usb; }
+    if (lk) { el('#mstyle').value = ({ solid: 'cable', dashed: 'wifi', dotted: 'usb' }[lk.style]) || lk.style || 'cable'; el('#mobs').checked = !!lk.observed; }
+    if (tx) { if (document.activeElement !== el('#mttxt')) el('#mttxt').value = tx.text || ''; el('#mtsize').value = tx.size || 'M'; }
+    el('#mzv').textContent = Math.round(zoom * 100) + ' %';
   };
   const aSvg = (svg, e) => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };
   const svg = el('#msvg');
   svg.addEventListener('pointerdown', e => {
-    const gl = e.target.closest('[data-l]'), g = e.target.closest('[data-n]');
-    if (!g && gl) { selL = gl.dataset.l; sel = null; conectando = false; ayuda('Conexión seleccionada: puedes eliminarla.'); dibujar(); return; }
-    if (!g) { sel = null; selL = null; conectando = false; ayuda(); dibujar(); return; }
+    const gl = e.target.closest('[data-l]'), g = e.target.closest('[data-n]'), gt = e.target.closest('[data-t]');
+    if (!g && gt) {
+      const t = m.texts.find(x => x.id === gt.dataset.t); selT = t.id; sel = null; selL = null; conectando = false; ayuda('Texto seleccionado: arrástralo, edítalo o elimínalo.'); dibujar();
+      const h = H(), p0 = aSvg(svg, e), ox = t.x * W - p0.x, oy = t.y * h - p0.y; let movido = false;
+      const mover = ev => { const p = aSvg(svg, ev); t.x = Math.min(0.97, Math.max(0.03, (p.x + ox) / W)); t.y = Math.min(0.97, Math.max(0.03, (p.y + oy) / h)); movido = true; dibujar(); };
+      const soltar = () => { removeEventListener('pointermove', mover); removeEventListener('pointerup', soltar); if (movido) marcar(true); };
+      addEventListener('pointermove', mover); addEventListener('pointerup', soltar); return;
+    }
+    if (!g && gl) { selL = gl.dataset.l; sel = null; selT = null; conectando = false; ayuda('Conexión seleccionada: cambia su tipo o elimínala.'); dibujar(); return; }
+    if (!g) {
+      sel = null; selL = null; selT = null; conectando = false; ayuda(); dibujar();
+      const sc = el('#mscroll'), x0 = e.clientX, y0 = e.clientY, sl = sc.scrollLeft, st = sc.scrollTop;   // arrastrar el fondo = desplazar el mapa ampliado
+      const pan = ev => { sc.scrollLeft = sl - (ev.clientX - x0); sc.scrollTop = st - (ev.clientY - y0); };
+      const fin = () => { removeEventListener('pointermove', pan); removeEventListener('pointerup', fin); };
+      addEventListener('pointermove', pan); addEventListener('pointerup', fin); return;
+    }
     const n = m.nodes.find(x => x.id === g.dataset.n);
     if (conectando && sel && sel !== n.id) {
       const a = m.nodes.find(x => x.id === sel);
@@ -580,9 +605,9 @@ async function verMapa(eid) {
         const style = a.type === 'camera' || n.type === 'camera' ? 'camera' : (INALAMBRICOS.has(a.type) || INALAMBRICOS.has(n.type)) ? 'wifi' : 'cable';
         m.links = [...(m.links || []), { id: 'wl' + Date.now().toString(36), source: a.id, target: n.id, style, observed: false, color: null }]; marcar(true);
       }
-      conectando = false; sel = n.id; selL = null; ayuda(); dibujar(); return;
+      conectando = false; sel = n.id; selL = null; selT = null; ayuda(); dibujar(); return;
     }
-    sel = n.id; selL = null; dibujar();
+    sel = n.id; selL = null; selT = null; dibujar();
     const h = H(), p0 = aSvg(svg, e), ox = n.x * W - p0.x, oy = n.y * h - p0.y; let movido = false;
     const mover = ev => { const p = aSvg(svg, ev); n.x = Math.min(0.95, Math.max(0.05, (p.x + ox) / W)); n.y = Math.min(0.97, Math.max(0.03, (p.y + oy) / h)); movido = true; dibujar(); };
     const soltar = () => { removeEventListener('pointermove', mover); removeEventListener('pointerup', soltar); if (movido) marcar(true); };
@@ -595,6 +620,7 @@ async function verMapa(eid) {
   };
   el('#mcon').onclick = () => { conectando = !conectando; ayuda(conectando ? 'Toca el equipo con el que quieres conectarlo.' : ''); dibujar(); };
   el('#mdel').onclick = () => {
+    if (selT) { m.texts = (m.texts || []).filter(t => t.id !== selT); selT = null; marcar(true); ayuda(); dibujar(); return; }
     if (selL) { m.links = (m.links || []).filter(l => l.id !== selL); selL = null; marcar(true); ayuda(); dibujar(); return; }
     if (!sel) return; const n = m.nodes.find(x => x.id === sel);
     if (n && n.type === 'internet') { toast('El nodo de Internet no se elimina.'); return; }
@@ -603,12 +629,22 @@ async function verMapa(eid) {
   const editarCampo = (k, v) => { const n = sel && m.nodes.find(x => x.id === sel); if (!n) return; n[k] = v || null; if (k === 'label') n.label = v || n.label; marcar(true); dibujar(); };
   el('#mlab').oninput = e => { const n = sel && m.nodes.find(x => x.id === sel); if (n && e.target.value.trim()) { n.label = e.target.value.trim(); marcar(true); dibujar(); } };
   el('#mip').oninput = e => editarCampo('ip', e.target.value.trim());
+  el('#mbroken').onchange = e => { const n = sel && m.nodes.find(x => x.id === sel); if (!n) return; n.status = e.target.checked ? 'broken' : (n.pending ? 'pending' : 'ok'); marcar(true); dibujar(); };
+  el('#musb').onchange = e => { const n = sel && m.nodes.find(x => x.id === sel); if (!n) return; n.usb = e.target.checked; if (n.usb) n.ip = null; marcar(true); dibujar(); };
+  el('#mstyle').onchange = e => { const l = selL && (m.links || []).find(x => x.id === selL); if (!l) return; l.style = e.target.value; marcar(true); dibujar(); };
+  el('#mobs').onchange = e => { const l = selL && (m.links || []).find(x => x.id === selL); if (!l) return; l.observed = e.target.checked; marcar(true); dibujar(); };
+  el('#mtxtadd').onclick = () => { const t = { id: 'wt' + Date.now().toString(36), text: 'Nota', x: 0.5, y: 0.1, size: 'M', color: '#FFF4CC' }; m.texts = [...(m.texts || []), t]; selT = t.id; sel = null; selL = null; marcar(true); ayuda('Texto agregado: escribe su contenido y arrástralo a su lugar.'); dibujar(); el('#mttxt').focus(); el('#mttxt').select(); };
+  el('#mttxt').oninput = e => { const t = selT && (m.texts || []).find(x => x.id === selT); if (t && e.target.value.trim()) { t.text = e.target.value; marcar(true); dibujar(); } };
+  el('#mtsize').onchange = e => { const t = selT && (m.texts || []).find(x => x.id === selT); if (!t) return; t.size = e.target.value; marcar(true); dibujar(); };
+  const aplicarZoom = z => { zoom = Math.min(3, Math.max(0.5, Math.round(z * 100) / 100)); const sv = el('#msvg'); sv.style.width = (zoom * 100) + '%'; sv.style.minWidth = (760 * zoom) + 'px'; el('#mzv').textContent = Math.round(zoom * 100) + ' %'; };
+  el('#mzp').onclick = () => aplicarZoom(zoom + 0.25); el('#mzm').onclick = () => aplicarZoom(zoom - 0.25); el('#mzr').onclick = () => aplicarZoom(1);
+  el('#mscroll').addEventListener('wheel', e => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); aplicarZoom(zoom + (e.deltaY < 0 ? 0.15 : -0.15)); } }, { passive: false });
   el('#msave').onclick = async () => { try { await api(`/api/evaluations/${eid}/map`, { method: 'PUT', body: m }); marcar(false); toast('Mapa guardado.'); } catch (e) { toast(errTxt(e)); } };
   el('#mclose').onclick = () => d.close();
   el('#mcmd').onsubmit = async e => {
     e.preventDefault(); const t = el('#mtxt').value.trim(); if (!t) return;
     el('#mrep').textContent = 'Aplicando…';
-    try { const r = await api(`/api/evaluations/${eid}/map/command`, { method: 'POST', body: { map: m, command: t } }); m = r.map; sel = null; selL = null; el('#mtxt').value = ''; el('#mrep').textContent = r.reply || 'Listo.'; marcar(true); dibujar(); }
+    try { const r = await api(`/api/evaluations/${eid}/map/command`, { method: 'POST', body: { map: m, command: t } }); m = r.map; sel = null; selL = null; selT = null; el('#mtxt').value = ''; el('#mrep').textContent = r.reply || 'Listo.'; marcar(true); dibujar(); }
     catch (er) { el('#mrep').textContent = errTxt(er); }
   };
   const mc = el('#mmic'); if (mc) mc.onclick = () => dictar(mc, el('#mtxt'));
