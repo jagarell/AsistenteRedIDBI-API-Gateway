@@ -468,7 +468,10 @@ function permisos(rol, despues) {
 
 
 /* ---------- Asistente IA (consultas y reportes) ---------- */
-const CHAT = { msgs: [], estado: {}, reporte: null, ctx: '', tipos: [], fotos: [], pend: [], nuevaVisita: false };
+const CHAT = { msgs: [], estado: {}, reporte: null, ctx: '', tipos: [], fotos: [], pend: [], nuevaVisita: false, sop: null };
+const SOP_PISTA = { cliente: 'Cliente o local', motivo: 'Motivo de la visita', evid: 'Nombres de las fotos, separados por coma', hecho: 'Lo realizado en este punto' };
+const SOP_REGLAS = { S1: 'Un solo sistema de impresiones activo', S2: 'IP fijas y sin conflictos', S3: 'Respaldo de cada impresora', S4: 'Lugares de preparación con su impresora asignada' };
+const SOP_MARCA = { ok: '✓ Cumple', bad: '✗ No cumple', na: '— No aplica' };
 const TIPOS_EVID = ['Frontis del local', 'Speedtest', 'ipconfig', 'Escáner de IP', 'Ubicación del router', 'Puertos del router', 'Etiqueta del router', 'AnyDesk de caja', 'Equipo de caja', 'Selftest de impresora', 'Etiqueta de impresora', 'Conexiones de impresora', 'Lugar de preparación', 'Zona de atención', 'Switch', 'Punto de red', 'Documento (RUC, factura o dirección)', 'Otra foto'];
 /* reduce la foto a 1600 px (JPEG) como hace la app, para subirla liviana */
 const reducirFoto = file => new Promise((ok, mal) => {
@@ -497,9 +500,9 @@ V.asistente = async main => {
         ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(m.texto)}${(m.adj || []).length ? `<div class="tiny" style="margin-top:4px;opacity:.9">📎 ${m.adj.map(esc).join(' · ')}</div>` : ''}</div></div>`
         : `<div style="margin-bottom:10px"><div class="card" style="max-width:92%;padding:12px 16px">${m.bloques.filter(b => b.tipo !== 'accion').map((b, bi) => bloque(b, mi, bi)).join('<hr style="border:0;border-top:1px solid var(--bd);margin:10px 0">')}</div></div>`).join('')
         : `<div class="card"><h2>¿En qué te ayudo?</h2><p class="muted">Redacta una minuta nueva con tus fotos, actualiza una existente, o pídeme reportes, las minutas por validar y tus pendientes de hoy. Respeto lo que tu rol puede ver.</p><div class="row" style="margin-top:12px">${SUG.map(x => `<button class="tab" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`}</div>
-      ${modo === 'new' || modo === 'upd' ? `<div class="row tiny" style="padding:6px 0"><span class="chip info">${modo === 'new' ? 'Redactando una minuta nueva' : 'Actualizando una minuta'}</span><button class="btn sm" id="salir" type="button">Salir de la minuta</button></div>` : ''}
+      ${modo === 'new' || modo === 'upd' || CHAT.sop ? `<div class="row tiny" style="padding:6px 0"><span class="chip info">${CHAT.sop ? 'Redactando una minuta de soporte' : modo === 'new' ? 'Redactando una minuta nueva' : 'Actualizando una minuta'}</span><button class="btn sm" id="salir" type="button">Salir de la minuta</button></div>` : ''}
       ${CHAT.pend.length ? `<div class="row" style="padding:4px 0">${CHAT.pend.map((a, i) => `<span class="chip ok">📎 ${esc(a.tipo)} <button type="button" data-qa="${i}" aria-label="Quitar ${esc(a.tipo)}" style="border:0;background:none;color:inherit;cursor:pointer;font-weight:700">×</button></span>`).join('')}</div>` : ''}
-      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><button type="button" class="btn" id="clip" aria-label="Adjuntar evidencias" title="Adjuntar evidencias">📎</button><input type="file" id="fi" accept="image/*" hidden><input type="text" id="t" placeholder="Escribe o dicta tu pedido" autocomplete="off" style="flex:1">${micBtn('mic')}<button class="btn fill" id="go">Enviar</button></form></div>`;
+      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><button type="button" class="btn" id="clip" aria-label="Adjuntar evidencias" title="Adjuntar evidencias">📎</button><input type="file" id="fi" accept="image/*" hidden>${CHAT.sop && CHAT.sop.paso === 'alcance' ? '<textarea id="t" rows="3" placeholder="Un punto por línea" style="flex:1"></textarea>' : `<input type="text" id="t" placeholder="${esc(CHAT.sop ? SOP_PISTA[CHAT.sop.paso] || 'Escribe tu respuesta' : 'Escribe o dicta tu pedido')}" autocomplete="off" style="flex:1">`}${micBtn('mic')}<button class="btn fill" id="go">Enviar</button></form></div>`;
     window.scrollTo(0, document.body.scrollHeight);
     main.querySelectorAll('[data-s]').forEach(b => b.onclick = () => enviar(b.dataset.s));
     main.querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(JSON.parse(b.dataset.a), +b.dataset.m, +b.dataset.bi));
@@ -519,9 +522,10 @@ V.asistente = async main => {
     const t = $('#t', main); if (t) t.focus();
     const mc = $('#mic', main); if (mc) mc.onclick = () => dictar(mc, $('#t', main));
   };
-  const reiniciar = () => { CHAT.estado = {}; CHAT.ctx = ''; CHAT.tipos = []; CHAT.fotos = []; CHAT.pend = []; CHAT.nuevaVisita = false; };
+  const reiniciar = () => { CHAT.sop = null; CHAT.estado = {}; CHAT.ctx = ''; CHAT.tipos = []; CHAT.fotos = []; CHAT.pend = []; CHAT.nuevaVisita = false; };
   const bot = (...bloques) => CHAT.msgs.push({ yo: false, bloques });
   const enviar = async (texto, extra, opt = {}) => {
+    if (CHAT.sop && !opt.sinEco) return soporte(texto);
     const nuevos = CHAT.pend.splice(0);
     if (nuevos.length) { CHAT.tipos.push(...nuevos.map(a => a.tipo)); CHAT.fotos.push(...nuevos); }
     if (!opt.sinEco) CHAT.msgs.push({ yo: true, texto: texto || 'Adjunté evidencias', adj: nuevos.map(a => a.tipo) });
@@ -534,8 +538,8 @@ V.asistente = async main => {
       const r = await api('/api/asistente/mensaje', { method: 'POST', body });
       const est = r.estado || {};
       if (est.modo === 'soporte') {
-        reiniciar();
-        bot({ texto: 'La minuta de soporte tiene un paso a paso (cliente, motivo, lo realizado y evidencias) que por ahora se hace desde la app.' });
+        reiniciar(); CHAT.sop = { paso: 'cliente', antecedentes: [], puntos: [], hechos: [], evidencias: [], reglas: {}, resultados: {}, estadoSugerido: 'OP', evidLeidas: [], credenciales: [] };
+        CHAT.msgs.push({ yo: false, bloques: r.bloques || [{ texto: r.texto }] });
       } else {
         CHAT.estado = est;
         const act = (r.bloques || []).find(b => b.tipo === 'actualizar_minuta');
@@ -548,6 +552,84 @@ V.asistente = async main => {
         CHAT.msgs.push({ yo: false, bloques: r.bloques || [{ texto: r.texto }] });
       }
     } catch (e) { bot({ texto: 'No pude responder: ' + errTxt(e) }); }
+    pintar();
+  };
+  /* ---- minuta de soporte: el mismo paso a paso de la app (cliente → motivo → alcance → evidencias → lo realizado → reglas → estado) ---- */
+  const SA = (id, label, principal) => ({ id, label, principal: !!principal, datos: {} });
+  const sopBot = (texto, acciones) => bot({ texto, acciones: acciones || [] });
+  const soporte = async texto => {
+    const S = CHAT.sop, nuevos = CHAT.pend.splice(0);
+    if (nuevos.length) { CHAT.tipos.push(...nuevos.map(a => a.tipo)); CHAT.fotos.push(...nuevos); }
+    CHAT.msgs.push({ yo: true, texto: texto || 'Adjunté evidencias', adj: nuevos.map(a => a.tipo) });
+    const t = (texto || '').trim();
+    if (S.paso === 'cliente') {
+      if (!t) { pintar(); return; }
+      S.cliente = t; pintar();
+      S.antecedentes = await api('/api/clientes/antecedentes?cliente=' + encodeURIComponent(t)).catch(() => []);
+      const ant = S.antecedentes.length ? `Antecedentes de ${t}:\n` + S.antecedentes.slice(0, 5).map(a => `• ${a.fecha || ''} · ${a.tipo === 'soporte' ? 'Soporte' : 'Implementación'}${a.texto ? ' — ' + a.texto : ''}`).join('\n') : `No hay visitas anteriores registradas de ${t}.`;
+      S.paso = 'motivo'; sopBot(`${ant}\n\n¿Cuál es el motivo de la visita?`);
+    } else if (S.paso === 'motivo') {
+      if (!t) { pintar(); return; }
+      S.motivo = t; S.paso = 'alcance'; sopBot('¿Qué abarca la visita? Escribe un punto por línea (por ejemplo: «Impresora de cocina sin imprimir», «Revisar el WiFi del salón»).');
+    } else if (S.paso === 'alcance') {
+      S.puntos = t.split(/\n|;/).map(x => x.trim().replace(/^[-•\s]+/, '')).filter(Boolean);
+      if (!S.puntos.length) { sopBot('Escribe al menos un punto de la visita.'); pintar(); return; }
+      S.paso = 'evid'; sopBot('Adjunta con 📎 o nombra las evidencias (selftest, router, repetidor…). Las leo para completar IP, conexión y respaldo.', [SA('s_sin_evid', 'Sin evidencias')]);
+    } else if (S.paso === 'evid') {
+      CHAT.msgs.forEach(m => (m.bloques || []).forEach(b => { if ((b.acciones || []).some(x => x.id === 's_sin_evid')) b.hecho = true; }));
+      S.evidencias = [...t.split(/[,\n]/).map(x => x.trim()).filter(Boolean), ...CHAT.tipos];
+      await soporteHecho(0);
+    } else if (S.paso === 'hecho') {
+      if (!t) { pintar(); return; }
+      S.hechos.push(t); await soporteHecho(S.hechos.length);
+    } else { sopBot('Usa los botones de arriba para continuar, o toca «Salir de la minuta».'); }
+    pintar();
+  };
+  const soporteHecho = async i => {
+    const S = CHAT.sop;
+    if (i < S.puntos.length) { S.paso = 'hecho'; sopBot(`${i + 1}. ${S.puntos[i]}\n¿Qué se realizó? Incluye IP, conexión, respaldo y contraseñas si aplica; no pongas fechas.`); return; }
+    sopBot('Revisando las reglas de soporte…'); pintar();
+    try {
+      const r = await api('/api/asistente/soporte/evaluar', { method: 'POST', body: { motivo: S.motivo, hechos: S.hechos, evidencias: S.evidencias } });
+      CHAT.msgs.pop();
+      S.reglas = Object.fromEntries(Object.entries(r.reglas || {}).map(([k, v]) => [k, String(v)])); S.resultados = r.resultados || {};
+      S.estadoSugerido = r.estadoSugerido || 'OP'; S.evidLeidas = r.evidencias || []; S.credenciales = r.credenciales || [];
+      S.paso = 'reglas'; soporteReglas();
+    } catch (e) { CHAT.msgs.pop(); sopBot('No pude revisar las reglas de soporte: ' + errTxt(e), [SA('s_reintentar', 'Reintentar', true)]); }
+  };
+  const soporteReglas = () => {
+    const S = CHAT.sop;
+    CHAT.msgs.forEach(m => (m.bloques || []).forEach(b => { if (b.reglas) b.hecho = true; }));
+    const txt = Object.entries(SOP_REGLAS).map(([k, n]) => `${k} · ${n}: ${SOP_MARCA[S.reglas[k]] || SOP_MARCA.na}` + (S.resultados[k] ? `\n   ${S.resultados[k]}` : '')).join('\n');
+    bot({ texto: `Revisé las reglas de soporte con lo que escribiste. Toca una regla para corregirla:\n\n${txt}`, reglas: true, acciones: [...Object.keys(SOP_REGLAS).map(k => SA('s_r:' + k, `${k}: ${SOP_MARCA[S.reglas[k]] || SOP_MARCA.na}`)), SA('s_ok', 'Continuar', true)] });
+  };
+  const soporteAccion = async a => {
+    const S = CHAT.sop; if (!S) return;
+    const id = String(a.id);
+    if (id === 's_sin_evid') { S.evidencias = [...CHAT.tipos]; CHAT.msgs.push({ yo: true, texto: 'Sin evidencias' }); await soporteHecho(0); }
+    else if (id === 's_reintentar') await soporteHecho(S.puntos.length);
+    else if (id.startsWith('s_r:')) {
+      const k = id.slice(4); S.reglas[k] = S.reglas[k] === 'ok' ? 'bad' : S.reglas[k] === 'bad' ? 'na' : 'ok';
+      if (Object.values(S.reglas).includes('bad')) S.estadoSugerido = 'OBS'; else if (S.estadoSugerido === 'OBS') S.estadoSugerido = 'OP';
+      soporteReglas();
+    } else if (id === 's_ok') {
+      S.paso = 'estado'; const sug = { OP: 'Operativo', OPP: 'Operativo con pendiente', OBS: 'Observado' };
+      sopBot(`¿Cómo queda el local? Te sugiero «${sug[S.estadoSugerido]}».`, Object.entries(sug).map(([k, v]) => SA('s_e:' + k, v, k === S.estadoSugerido)));
+    } else if (id.startsWith('s_e:')) {
+      const estado = id.slice(4); CHAT.msgs.push({ yo: true, texto: a.label }); sopBot('Redactando la minuta de soporte…'); pintar();
+      try {
+        const m = await api('/api/minutas/soporte', { method: 'POST', body: { cliente: S.cliente, local: S.cliente, antecedentes: S.antecedentes, motivo: S.motivo, puntos: S.puntos, hechos: S.hechos, evidencias: S.evidLeidas, reglas: S.reglas, estado, credenciales: S.credenciales } });
+        CHAT.msgs.pop();
+        const fotos = CHAT.fotos.splice(0); const cliente = S.cliente; reiniciar();
+        sopBot(`Redacté la minuta de soporte de ${cliente}. Quedó en Pendiente: revísala y solicita la validación del supervisor.`);
+        if (m && m.id && fotos.length) {
+          let ok = 0;
+          for (const f of fotos) { const fd = new FormData(); fd.append('tipo', f.tipo); fd.append('archivo', f.blob, 'foto.jpg'); try { await api(`/api/minutas/${m.id}/fotos`, { method: 'POST', body: fd }); ok++; } catch (e) { /* queda sin subir */ } }
+          sopBot(`${ok} de ${fotos.length} foto${fotos.length === 1 ? '' : 's'} subida${ok === 1 ? '' : 's'} a la minuta.`);
+        }
+        bot(verEnReportes);
+      } catch (e) { CHAT.msgs.pop(); sopBot('No pude guardar la minuta: ' + errTxt(e), [SA('s_e:' + estado, 'Reintentar', true)]); }
+    }
     pintar();
   };
   const verEnReportes = { tipo: 'texto', acciones: [{ id: 'abrir_minuta', label: 'Ver en Reportes', principal: true, datos: {} }] };
@@ -592,7 +674,8 @@ V.asistente = async main => {
       else if (a.id === 'abrir_preguntas') location.hash = '#/preguntas';
       else if (a.id === 'texto') enviar((a.datos && a.datos.texto) || a.label);
       else if (a.id === 'tipo_imp') { blk.hecho = true; CHAT.msgs.push({ yo: true, texto: 'Implementación' }); CHAT.estado = {}; await enviar((a.datos && a.datos.texto) || '', { modo: 'new', tipo: 'imp' }, { sinEco: true }); }
-      else if (a.id === 'tipo_sop') { CHAT.msgs.push({ yo: true, texto: 'Soporte / incidencia' }); bot({ texto: 'La minuta de soporte tiene un paso a paso (cliente, motivo, lo realizado y evidencias) que por ahora se hace desde la app.' }); pintar(); }
+      else if (a.id === 'tipo_sop') { blk.hecho = true; CHAT.msgs.push({ yo: true, texto: 'Soporte / incidencia' }); CHAT.estado = {}; await enviar('Redacta una minuta de soporte', null, { sinEco: true }); }
+      else if (String(a.id).startsWith('s_')) { blk.hecho = true; await soporteAccion(a); }
       else if (a.id === 'agregar') { bot({ texto: 'Listo, cuéntame más o adjunta más evidencias con 📎. Cuando termines, toca «Redactar minuta» en el borrador.' }); pintar(); }
       else if (a.id === 'redactar') await redactar(blk);
       else if (a.id === 'aplicar') await aplicar(blk);
