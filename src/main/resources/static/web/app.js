@@ -44,6 +44,7 @@ async function api(path, opt = {}, retry = true) {
   return t ? JSON.parse(t) : null;
 }
 function cerrar(silencioso) {
+  if (typeof Cola !== 'undefined') Cola._arrancada = false;
   const rt = store.get('na.refresh');
   if (!silencioso && rt && S.token) fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + S.token }, body: JSON.stringify({ refreshToken: rt }) }).catch(() => {});
   S.token = null; S.user = null; store.del('na.refresh'); store.del('na.user');
@@ -468,6 +469,55 @@ function permisos(rol, despues) {
 
 
 /* ---------- Asistente IA (consultas y reportes) ---------- */
+/* ---------- fotos sin conexión: si la subida falla por red o por el servidor, la foto espera en este navegador y se sube sola ---------- */
+const Cola = {
+  _db: null, _corriendo: false,
+  abrir() {
+    if (this._db) return this._db;
+    this._db = new Promise((ok, mal) => {
+      try {
+        const rq = indexedDB.open('na-cola', 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('fotos', { keyPath: 'k', autoIncrement: true });
+        rq.onsuccess = () => ok(rq.result); rq.onerror = () => mal(rq.error);
+      } catch (e) { mal(e); }
+    });
+    return this._db;
+  },
+  async tx(modo, fn) { const db = await this.abrir(); return new Promise((ok, mal) => { const t = db.transaction('fotos', modo), r = fn(t.objectStore('fotos')); t.oncomplete = () => ok(r && r.result); t.onerror = () => mal(t.error); t.onabort = () => mal(t.error); }); },
+  async guardar(item) { await this.tx('readwrite', st => st.add(item)); },
+  async todas() { return (await this.tx('readonly', st => st.getAll())) || []; },
+  async quitar(k) { await this.tx('readwrite', st => st.delete(k)); },
+  async cuantas() { try { return (await this.todas()).filter(x => x.user === (S.user && S.user.id)).length; } catch (e) { return 0; } },
+  /* 'ok' | 'cola' (queda esperando) | 'error' (el servidor la rechazó) */
+  async subir(minutaId, tipo, blob) {
+    const fd = new FormData(); fd.append('tipo', tipo); fd.append('archivo', blob, 'foto.jpg');
+    try { await api(`/api/minutas/${minutaId}/fotos`, { method: 'POST', body: fd }); return 'ok'; }
+    catch (e) {
+      const esperar = !(e instanceof ApiError) || e.status >= 500 || e.status === 401;   // sin red (fetch falló), servidor caído o sesión vencida
+      if (!esperar) return 'error';
+      try { await this.guardar({ user: S.user && S.user.id, minutaId, tipo, blob, t: Date.now() }); return 'cola'; } catch (e2) { return 'error'; }
+    }
+  },
+  async procesar() {
+    if (this._corriendo || !S.token) return;
+    this._corriendo = true;
+    try {
+      let subidas = 0, descartadas = 0;
+      for (const it of (await this.todas()).filter(x => x.user === (S.user && S.user.id))) {
+        const fd = new FormData(); fd.append('tipo', it.tipo); fd.append('archivo', it.blob, 'foto.jpg');
+        try { await api(`/api/minutas/${it.minutaId}/fotos`, { method: 'POST', body: fd }); await this.quitar(it.k); subidas++; }
+        catch (e) {
+          if (!(e instanceof ApiError) || e.status >= 500 || e.status === 401) break;   // sigue sin poder: se reintenta luego
+          await this.quitar(it.k); descartadas++;   // el servidor la rechaza (minuta borrada o sin permiso): no se reintenta
+        }
+      }
+      if (subidas) toast(`${subidas} foto${subidas === 1 ? '' : 's'} pendiente${subidas === 1 ? '' : 's'} subida${subidas === 1 ? '' : 's'} a su minuta.`);
+      if (descartadas) toast(`${descartadas} foto${descartadas === 1 ? '' : 's'} no se pudo${descartadas === 1 ? '' : 'ieron'} subir (la minuta ya no existe o no tienes permiso).`);
+    } catch (e) { /* sin almacenamiento local: no hay cola */ }
+    this._corriendo = false;
+  },
+};
+const resumenFotos = (n, r) => `${r.ok} de ${n} foto${n === 1 ? '' : 's'} subida${r.ok === 1 ? '' : 's'} a la minuta.${r.cola ? ` ${r.cola} quedó${r.cola === 1 ? '' : 'n'} esperando en este navegador y se subirá${r.cola === 1 ? '' : 'n'} sola${r.cola === 1 ? '' : 's'} al volver la conexión (no borres los datos del navegador).` : ''}${r.error ? ` ${r.error} no se pudo subir: súbela desde la minuta en la app.` : ''}`;
 const CHAT = { msgs: [], estado: {}, reporte: null, ctx: '', tipos: [], fotos: [], pend: [], nuevaVisita: false, sop: null };
 const SOP_PISTA = { cliente: 'Cliente o local', motivo: 'Motivo de la visita', evid: 'Nombres de las fotos, separados por coma', hecho: 'Lo realizado en este punto' };
 const SOP_REGLAS = { S1: 'Un solo sistema de impresiones activo', S2: 'IP fijas y sin conflictos', S3: 'Respaldo de cada impresora', S4: 'Lugares de preparación con su impresora asignada' };
@@ -623,9 +673,9 @@ V.asistente = async main => {
         const fotos = CHAT.fotos.splice(0); const cliente = S.cliente; reiniciar();
         sopBot(`Redacté la minuta de soporte de ${cliente}. Quedó en Pendiente: revísala y solicita la validación del supervisor.`);
         if (m && m.id && fotos.length) {
-          let ok = 0;
-          for (const f of fotos) { const fd = new FormData(); fd.append('tipo', f.tipo); fd.append('archivo', f.blob, 'foto.jpg'); try { await api(`/api/minutas/${m.id}/fotos`, { method: 'POST', body: fd }); ok++; } catch (e) { /* queda sin subir */ } }
-          sopBot(`${ok} de ${fotos.length} foto${fotos.length === 1 ? '' : 's'} subida${ok === 1 ? '' : 's'} a la minuta.`);
+          const r = { ok: 0, cola: 0, error: 0 };
+          for (const f of fotos) r[await Cola.subir(m.id, f.tipo, f.blob)]++;
+          sopBot(resumenFotos(fotos.length, r));
         }
         bot(verEnReportes);
       } catch (e) { CHAT.msgs.pop(); sopBot('No pude guardar la minuta: ' + errTxt(e), [SA('s_e:' + estado, 'Reintentar', true)]); }
@@ -644,12 +694,9 @@ V.asistente = async main => {
       reiniciar();
       CHAT.msgs.push({ yo: false, bloques: bl.filter(b => b.tipo !== 'accion') });
       if (id && fotos.length) {
-        let ok = 0, mal = 0;
-        for (const f of fotos) {
-          const fd = new FormData(); fd.append('tipo', f.tipo); fd.append('archivo', f.blob, 'foto.jpg');
-          try { await api(`/api/minutas/${id}/fotos`, { method: 'POST', body: fd }); ok++; } catch (e) { mal++; }
-        }
-        bot({ texto: `${ok} foto${ok === 1 ? '' : 's'} subida${ok === 1 ? '' : 's'} a la minuta.${mal ? ` ${mal} no se pudo subir: súbela desde la minuta en la app.` : ''}` });
+        const r = { ok: 0, cola: 0, error: 0 };
+        for (const f of fotos) r[await Cola.subir(id, f.tipo, f.blob)]++;
+        bot({ texto: resumenFotos(fotos.length, r) });
       }
       bot(verEnReportes);
     } catch (e) { CHAT.msgs.pop(); blk.hecho = false; bot({ texto: 'No pude redactar la minuta: ' + errTxt(e) }); }
@@ -1150,6 +1197,7 @@ async function pintar() {
     }
   }
   if (!S.token) { if (ruta !== 'login') { location.hash = '#/login'; return; } return V.login(root); }
+  if (!Cola._arrancada) { Cola._arrancada = true; Cola.procesar(); }   // fotos que quedaron esperando (sin conexión)
   if (ruta === 'login' || !ruta) { location.hash = '#/' + inicioDe(S.user.rol); return; }
   const items = MENU[S.user.rol] || MENU.TECNICO;
   const it = items.find(i => i[0] === ruta);
@@ -1165,4 +1213,5 @@ async function pintar() {
   catch (e) { if (e.status !== 401) v.innerHTML = `<div class="page"><div class="card"><h2>No se pudo cargar</h2><p class="muted">${esc(errTxt(e))}</p><button class="btn" id="re" style="margin-top:12px">Reintentar</button></div></div>`; const r = $('#re'); if (r) r.onclick = pintar; }
 }
 addEventListener('hashchange', pintar);
+addEventListener('online', () => Cola.procesar());
 pintar();
