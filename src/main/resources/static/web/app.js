@@ -473,12 +473,13 @@ V.asistente = async main => {
         ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(m.texto)}</div></div>`
         : `<div style="margin-bottom:10px"><div class="card" style="max-width:92%;padding:12px 16px">${m.bloques.map(bloque).join('<hr style="border:0;border-top:1px solid var(--bd);margin:10px 0">')}</div></div>`).join('')
         : `<div class="card"><h2>¿En qué te ayudo?</h2><p class="muted">Pídeme reportes de minutas, las que están por validar o tus pendientes de hoy. Respeto lo que tu rol puede ver.</p><div class="row" style="margin-top:12px">${SUG.map(x => `<button class="tab" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`}</div>
-      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><input type="text" id="t" placeholder="Escribe tu pedido" autocomplete="off" style="flex:1"><button class="btn fill" id="go">Enviar</button></form></div>`;
+      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><input type="text" id="t" placeholder="Escribe o dicta tu pedido" autocomplete="off" style="flex:1">${micBtn('mic')}<button class="btn fill" id="go">Enviar</button></form></div>`;
     window.scrollTo(0, document.body.scrollHeight);
     main.querySelectorAll('[data-s]').forEach(b => b.onclick = () => enviar(b.dataset.s));
     main.querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(JSON.parse(b.dataset.a)));
     $('#f', main).onsubmit = e => { e.preventDefault(); const t = $('#t', main).value.trim(); if (t) enviar(t); };
     const t = $('#t', main); if (t) t.focus();
+    const mc = $('#mic', main); if (mc) mc.onclick = () => dictar(mc, $('#t', main));
   };
   const enviar = async (texto, extra) => {
     CHAT.msgs.push({ yo: true, texto }); pintar();
@@ -508,6 +509,41 @@ V.asistente = async main => {
   pintar();
 };
 
+
+
+/* ---------- dictado por voz (Web Speech API del navegador) ---------- */
+const VOZ = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = id => VOZ ? `<button type="button" class="btn sm" id="${id}" aria-label="Dictar" aria-pressed="false" title="Dictar">🎤</button>` : '';
+function dictar(btn, input) {
+  if (!VOZ) return;
+  if (btn._rec) { btn._rec.stop(); return; }
+  const r = new VOZ(); r.lang = 'es-PE'; r.interimResults = true; r.continuous = false;
+  const base = input.value ? input.value.trim() + ' ' : '';
+  btn._rec = r; btn.setAttribute('aria-pressed', 'true'); btn.classList.add('fill');
+  r.onresult = e => { input.value = base + Array.from(e.results).map(x => x[0].transcript).join(' '); };
+  const fin = () => { btn._rec = null; btn.setAttribute('aria-pressed', 'false'); btn.classList.remove('fill'); input.focus(); };
+  r.onend = fin;
+  r.onerror = e => { fin(); toast(e.error === 'not-allowed' ? 'Permite el micrófono en el navegador para dictar.' : 'No se pudo dictar. Escribe tu respuesta.'); };
+  try { r.start(); } catch (e) { fin(); }
+}
+
+/* ---------- mapa de red (solo lectura) ---------- */
+async function verMapa(eid) {
+  let m;
+  try { m = (await api(`/api/evaluations/${eid}/map/generate`, { method: 'POST', body: {} })); m = m.map || m; } catch (e) { toast(errTxt(e)); return; }
+  const W = 1000, H = m.canvasH || 800, bw = 150, bh = 56, byId = Object.fromEntries((m.nodes || []).map(n => [n.id, n]));
+  const pos = n => ({ x: n.x * W, y: n.y * H });
+  const col = n => n.status === 'broken' ? 'var(--err)' : n.pending ? '#F57C00' : 'var(--pri)';
+  const links = (m.links || []).map(l => { const a = byId[l.source], b = byId[l.target]; if (!a || !b) return ''; const p = pos(a), q = pos(b);
+    const c = l.observed ? 'var(--err)' : l.color || (l.style === 'wifi' ? '#7E57C2' : 'var(--pri)');
+    return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${c}" stroke-width="${l.style === 'main' ? 4 : 2.5}" ${l.style === 'wifi' ? 'stroke-dasharray="7 6"' : ''}/>`; }).join('');
+  const nodes = (m.nodes || []).map(n => { const p = pos(n); const c = col(n);
+    return `<g><rect x="${p.x - bw / 2}" y="${p.y - bh / 2}" width="${bw}" height="${bh}" rx="12" fill="var(--s1)" stroke="${c}" stroke-width="2.5" ${n.pending ? 'stroke-dasharray="6 4"' : ''}/>
+      <text x="${p.x}" y="${p.y - 4}" text-anchor="middle" font-size="14" font-weight="700" fill="var(--tx)">${esc(String(n.label).slice(0, 20))}</text>
+      <text x="${p.x}" y="${p.y + 14}" text-anchor="middle" font-size="11" fill="var(--tx2)">${esc(String(n.ip || n.detail || n.location || (n.pending ? 'Por implementar' : '')).slice(0, 24))}</text></g>`; }).join('');
+  dialogo(`<div class="row" style="padding:0 4px 10px"><b class="sp">Mapa de red</b><span class="tiny">Línea punteada naranja = por implementar · violeta punteada = WiFi · roja = observada</span><button class="btn sm" data-x>Cerrar</button></div>
+    <div style="flex:1;overflow:auto;background:var(--s2);border-radius:10px"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Topología de red">${links}${nodes}</svg></div>`, true);
+}
 
 /* ---------- Chat IA (evaluación guiada) ---------- */
 const CH = { eid: null, state: null, node: null, resp: null, log: [], busy: false, done: false };
@@ -642,7 +678,7 @@ V.chat = async main => {
     const gps = n.nodeId === 'P03' ? `<div style="margin-top:10px"><button type="button" class="btn sm" id="gps">📍 Usar mi ubicación (Google Maps)</button><div id="gpsr"></div></div>` : '';
     const tipo = n.keyboard === 'date' ? 'date' : 'text';
     const sug = (n.suggestions || []).length ? `<div class="row" style="margin-top:8px">${n.suggestions.map(x => `<button type="button" class="tab" data-sg="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
-    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}<button class="btn fill">Enviar</button></div>${sug}${gps}${adjMarkup(n)}</form>`;
+    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}${tipo === 'date' ? '' : micBtn('mic')}<button class="btn fill">Enviar</button></div>${sug}${gps}${adjMarkup(n)}</form>`;
   };
 
   const pintar = () => {
@@ -652,7 +688,7 @@ V.chat = async main => {
       <div class="row"><div class="sp"><b>${esc((n && n.blockLabel) || (CH.done ? 'Evaluación terminada' : 'Evaluación'))}</b><div class="tiny">${n && n.questionNumber ? `Pregunta ${n.questionNumber} de ~${n.questionsTotal}` : ''}</div></div><button class="btn sm danger" id="nv">Empezar otra</button></div>
       <div class="prog"><i style="width:${pct}%"></i></div>
       <div id="log">${CH.log.map(x => x.k === 'q' ? `<div style="margin:10px 0"><div class="card" style="display:inline-block;max-width:88%;padding:10px 14px">${esc(x.t)}</div></div>` : x.k === 'a' ? `<div class="row" style="justify-content:flex-end;margin:6px 0"><button class="btn sm" data-edit="${esc(x.id)}" aria-label="Editar esta respuesta" style="padding:2px 8px">Editar</button><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(x.t)}</div></div>` : `<div class="chip info" style="margin:6px 0;white-space:normal">${esc(x.t)}</div>`).join('')}</div>
-      ${CH.done ? `<div class="card"><h2>¡Listo! La evaluación quedó completa.</h2><p class="muted">La minuta se genera con tus respuestas.</p><div class="row" style="margin-top:10px"><button class="btn fill" id="pdf">Ver minuta (PDF)</button><a class="btn" href="#/reportes">Ir a Reportes</a></div></div>`
+      ${CH.done ? `<div class="card"><h2>¡Listo! La evaluación quedó completa.</h2><p class="muted">La minuta se genera con tus respuestas.</p><div class="row" style="margin-top:10px"><button class="btn fill" id="pdf">Ver minuta (PDF)</button><button class="btn" id="mapa">Ver mapa de red</button><a class="btn" href="#/reportes">Ir a Reportes</a></div></div>`
       : n ? `<div class="card"><p style="font-weight:600;margin-bottom:12px;white-space:pre-wrap">${esc(n.text)}</p>${CH.error ? `<div class="err-t" style="margin-bottom:10px">${esc(CH.error)}</div>` : ''}${CH.busy ? '<p class="muted">Procesando…</p>' : entrada(n)}</div>` : '<div class="card"><p class="muted">Cargando…</p></div>'}</div>`;
     window.scrollTo(0, document.body.scrollHeight);
     ligar(n);
@@ -660,6 +696,7 @@ V.chat = async main => {
   const ligar = n => {
     $('#nv', main).onclick = async () => { try { await nuevaEv(); pintar(); } catch (e) { toast(errTxt(e)); } };
     const pdf = $('#pdf', main); if (pdf) pdf.onclick = () => verMinuta(CH.eid, CH.eid);
+    const mp = $('#mapa', main); if (mp) mp.onclick = () => verMapa(CH.eid);
     main.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editar(b.dataset.edit));
     if (!n || CH.busy || CH.done) return;
     const q = (s, f) => { const e = $(s, main); if (e) e.onclick = f; };
@@ -700,6 +737,7 @@ V.chat = async main => {
       const f = $('#tf', main); if (f) { f.onsubmit = e => { e.preventDefault(); const v = $('#tx', main).value.trim(); enviar(v, v); }; $('#tx', main).focus(); }
       main.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => enviar(b.dataset.sg, b.dataset.sg));
       const g = $('#gps', main); if (g) g.onclick = ubicar;
+      const mc = $('#mic', main); if (mc) mc.onclick = () => dictar(mc, $('#tx', main));
       const aj = $('#adj', main); if (aj) aj.onchange = () => adjuntar(aj.files, n.attachHint);
     }
   };
