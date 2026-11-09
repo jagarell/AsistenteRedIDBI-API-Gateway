@@ -259,11 +259,12 @@ V.equipo = async main => {
       <div class="row"><div class="tabs"><button class="tab ${tab === 'personas' ? 'on' : ''}" data-t="personas">Personas · ${pers.length}</button><button class="tab ${tab === 'roles' ? 'on' : ''}" data-t="roles">Roles y permisos</button></div><span class="sp"></span>
         ${tab === 'personas' ? `<span class="tiny">Plan Empresa · ${pers.length} de 10 usuarios</span><button class="btn fill" id="ap" ${pers.length >= 10 ? 'disabled' : ''}>Agregar persona</button>` : '<button class="btn fill" id="nrol">Crear un rol</button>'}</div>
       ${tab === 'personas' && cods.length ? `<div class="card" style="border-color:#F57C00"><h2>Cambios de contraseña por atender · ${cods.length}</h2>${cods.map(c => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--bd)"><span class="sp"><b>${esc(c.nombre)}</b> · ${esc(c.rol)} <span class="tiny">vence en ${c.minutos} min</span></span><button class="btn sm fill" data-cod="${c.id}">Ver código</button><button class="btn sm danger" data-no="${c.id}">No la reconozco</button></div>`).join('')}<p class="tiny" style="margin-top:8px">Dile el número a la persona en persona o por llamada, nunca por chat.</p></div>` : ''}
-      ${tab === 'personas' ? `<div class="card"><div class="tw"><table><thead><tr><th>Persona</th><th>Rol</th><th>Supervisor</th><th>Estado</th></tr></thead><tbody>${pers.map(p => `<tr>
+      ${tab === 'personas' ? `<div class="card"><div class="tw"><table><thead><tr><th>Persona</th><th>Rol</th><th>Supervisor</th><th>Estado</th><th>Acceso</th></tr></thead><tbody>${pers.map(p => `<tr>
         <td><div class="row"><span class="av">${esc(iniciales(p.nombre))}</span><div><b>${esc(p.nombre)}</b><div class="tiny">${esc(p.email)}</div></div></div></td>
         <td><select data-rol="${p.id}">${Object.entries(ROL).map(([k, v]) => `<option value="${k}" ${k === p.rol ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
         <td>${p.rol === 'TECNICO' ? `<select data-sup="${p.id}"><option value="">Sin supervisor</option>${sups.map(s => `<option value="${s.id}" ${s.id === p.supervisorId ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select>` : '<span class="tiny">—</span>'}</td>
-        <td>${p.pidioCodigo ? '<span class="chip warn">Pidió código</span>' : '<span class="chip ok">Con acceso</span>'}</td></tr>`).join('')}</tbody></table></div>
+        <td>${p.conAcceso === false ? '<span class="chip err">Sin acceso</span>' : p.pidioCodigo ? '<span class="chip warn">Pidió código</span>' : '<span class="chip ok">Con acceso</span>'}</td>
+        <td>${p.id === S.user.id ? '<span class="tiny">Tú</span>' : p.conAcceso === false ? `<button class="btn sm" data-dev="${p.id}">Devolver acceso</button>` : `<button class="btn sm danger" data-quit="${p.id}">Quitar acceso</button>`}</td></tr>`).join('')}</tbody></table></div>
         <p class="tiny" style="margin-top:10px">${pers.length >= 10 ? 'El plan Empresa llegó a sus 10 usuarios: pide más usuarios para agregar personas.' : 'Al agregar una persona le entregas su correo y una contraseña inicial.'}</p></div>`
       : `<div class="grid g3">${roles.map(r => `<div class="card"><div class="row"><h2 style="margin:0">${esc(r.name)}</h2><span class="sp"></span><span class="chip">${r.kind === 'fijo' ? 'Fijo' : r.kind === 'base' ? 'Base' : 'Propio'}</span></div><p class="muted" style="margin:8px 0">${esc(r.description)}</p><p class="tiny">${(r.perms || '').split(',').filter(Boolean).length} permisos activos</p><button class="btn sm" style="margin-top:10px" data-perm="${esc(r.id)}" ${r.id === 'admin' ? 'disabled' : ''}>${r.id === 'admin' ? 'Siempre todos los permisos' : 'Editar permisos'}</button></div>`).join('')}</div>`}
     </div>`;
@@ -280,6 +281,13 @@ V.equipo = async main => {
     main.querySelectorAll('[data-rol]').forEach(s => s.onchange = async () => {
       try { await api(`/api/equipo/${s.dataset.rol}/rol`, { method: 'PUT', body: { rol: s.value } }); toast('Rol actualizado.'); } catch (e) { toast(errTxt(e)); }
       await cargar();
+    });
+    const poner = async (id, conAcceso, msg) => { try { await api(`/api/equipo/${id}/acceso`, { method: 'PUT', body: { conAcceso } }); toast(msg); } catch (e) { toast(errTxt(e)); } await cargar(); };
+    main.querySelectorAll('[data-dev]').forEach(b => b.onclick = () => poner(b.dataset.dev, true, 'Acceso devuelto.'));
+    main.querySelectorAll('[data-quit]').forEach(b => b.onclick = () => {
+      const p = pers.find(x => String(x.id) === b.dataset.quit);
+      const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Quitar acceso a ${esc(p.nombre)}</h2><p class="muted" style="margin-bottom:12px">No podrá iniciar sesión ni renovarla. Sus datos y minutas se conservan y puedes devolverle el acceso cuando quieras. Si ahora tiene la sesión abierta, termina en un máximo de 60 minutos.</p><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Cancelar</button><button class="btn fill danger" id="qok">Quitar acceso</button></div>`);
+      $('#qok', d.el).onclick = () => { d.close(); poner(p.id, false, 'Acceso retirado.'); };
     });
     main.querySelectorAll('[data-sup]').forEach(s => s.onchange = async () => {
       try { await api(`/api/equipo/${s.dataset.sup}/supervisor`, { method: 'PUT', body: { supervisorId: s.value ? Number(s.value) : null } }); toast('Supervisor asignado.'); } catch (e) { toast(errTxt(e)); }

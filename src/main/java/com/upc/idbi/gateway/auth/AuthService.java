@@ -94,6 +94,12 @@ public class AuthService {
             );
         }
 
+        if (user.getAccessRemovedAt() != null) {
+            throw new IllegalArgumentException(
+                    "Tu acceso fue retirado. Habla con el administrador de tu empresa."
+            );
+        }
+
         String accessToken = jwtService.generateToken(user);
         int expiresInMinutes = (int) jwtService.getExpirationMinutes();
         String refreshToken = issueRefreshToken(user);
@@ -134,6 +140,11 @@ public class AuthService {
 
         UserEntity user = stored.getUser();
         refreshTokenRepository.delete(stored);
+        if (user.getAccessRemovedAt() != null) {
+            throw new InvalidRefreshTokenException(
+                    "Tu acceso fue retirado. Habla con el administrador de tu empresa."
+            );
+        }
 
         String accessToken = jwtService.generateToken(user);
         int expiresInMinutes = (int) jwtService.getExpirationMinutes();
