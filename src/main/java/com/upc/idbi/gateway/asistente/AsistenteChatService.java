@@ -41,7 +41,9 @@ public class AsistenteChatService {
 
     private static final DateTimeFormatter DMY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final Pattern UPD = Pattern.compile("\\b(actualiz|modific|corrig|cambi)\\w*\\b[^.]*\\bminuta", Pattern.CASE_INSENSITIVE);
-    private static final Pattern NUEVA = Pattern.compile("\\b(redact|gener|cre[ae]|arm[ae]|haz|hacer|elabor)\\w*\\b[^.]*\\bminuta|\\bnueva minuta", Pattern.CASE_INSENSITIVE);
+    // «Quiero una minuta de soporte» (sin verbo de redactar) también abre una minuta nueva; si el texto pide actualizar, manda UPD.
+    static final Pattern NUEVA = Pattern.compile("\\b(redact|gener|cre[ae]|arm[ae]|haz|hacer|elabor)\\w*\\b[^.]*\\bminuta|\\bnueva minuta"
+            + "|\\b(quiero|necesito|otra|una)\\s+(nueva\\s+)?minuta\\s+de\\s+(soporte|implementaci)", Pattern.CASE_INSENSITIVE);
     private static final Pattern POR_VALIDAR = Pattern.compile("por validar|pendientes? de validaci|falta(n)? validar|sin validar", Pattern.CASE_INSENSITIVE);
     private static final Pattern PENDIENTES = Pattern.compile("pendientes?|qu[eé] me falta|qu[eé] tengo", Pattern.CASE_INSENSITIVE);
     // 0.0.15: también «Reportes» e «informes» (en plural no entraba y respondía ChatGPT «No tengo acceso a reportes»)
