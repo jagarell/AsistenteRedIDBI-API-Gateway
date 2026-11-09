@@ -89,12 +89,12 @@ const errTxt = e => (e && e.message) || 'Ocurrió un error. Intenta de nuevo.';
 
 /* ---------- menú por rol (docs §39) ---------- */
 const MENU = {
-  ADMINISTRADOR: [['inicio', 'Inicio', 'inicio'], ['panel', 'Panel', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'],
+  ADMINISTRADOR: [['inicio', 'Inicio', 'inicio'], ['panel', 'Panel', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['chat', 'Nueva evaluación', 'chat'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'],
     ['preguntas', 'Preguntas y reglas', 'preg'], ['equipo', 'Equipo y accesos', 'team'], ['plan', 'Plan de la empresa', 'plan'], ['cuenta', 'Mi perfil y configuración', 'user']],
-  SUPERVISOR: [['panel', 'Panel · mi equipo', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'], ['cuenta', 'Mi perfil y configuración', 'user']],
-  TECNICO: [['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'], ['cuenta', 'Mi perfil y configuración', 'user']],
+  SUPERVISOR: [['panel', 'Panel · mi equipo', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['chat', 'Nueva evaluación', 'chat'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'], ['cuenta', 'Mi perfil y configuración', 'user']],
+  TECNICO: [['notificaciones', 'Notificaciones', 'bell'], ['chat', 'Nueva evaluación', 'chat'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'], ['cuenta', 'Mi perfil y configuración', 'user']],
 };
-const TITULO = { asistente: 'Asistente IA', inicio: 'Inicio', panel: 'Panel', notificaciones: 'Notificaciones', reportes: 'Reportes', equipo: 'Equipo y accesos', cuenta: 'Mi perfil y configuración', preguntas: 'Preguntas y reglas', plan: 'Plan de la empresa' };
+const TITULO = { chat: 'Nueva evaluación', asistente: 'Asistente IA', inicio: 'Inicio', panel: 'Panel', notificaciones: 'Notificaciones', reportes: 'Reportes', equipo: 'Equipo y accesos', cuenta: 'Mi perfil y configuración', preguntas: 'Preguntas y reglas', plan: 'Plan de la empresa' };
 
 /* ---------- pantallas ---------- */
 const V = {};
@@ -138,7 +138,7 @@ V.inicio = async main => {
     <div><h2 style="font-size:22px">Hola de nuevo, ${esc(nombre)}</h2><p class="muted">Resumen de toda la empresa.</p></div>
     <div class="grid g3">${ind.indicadores.map(k => `<div class="card kpi ${tono[k.clave] || ''}" data-go="${k.clave === 'por_validar' ? 'notificaciones' : 'reportes'}"><span>${esc(k.label)}</span><b>${k.cantidad}</b><small>${esc(sub(k))}</small></div>`).join('')}</div>
     <div class="card"><div class="row"><h2 style="margin:0">Recientes</h2><span class="sp"></span><a href="#/reportes">Ver todo</a></div>${tablaMinutas((rep.minutas || []).slice(0, 8))}</div>
-    <div class="grid g2"><div class="card"><h2>Nueva evaluación</h2><p class="muted">Las evaluaciones con el Chat IA se hacen desde la app del celular.</p></div>
+    <div class="grid g2"><div class="card" style="cursor:pointer" data-go="chat"><h2>Nueva evaluación</h2><p class="muted">Inicia la visita guiada con el Chat IA, igual que en la app.</p></div>
     <div class="card" style="cursor:pointer" data-go="asistente"><h2>Asistente IA</h2><p class="muted">Pide reportes, minutas por validar o pendientes. Redactar y actualizar minutas con fotos se hace en la app.</p></div></div>
   </div>`;
   main.querySelectorAll('[data-go]').forEach(e => e.onclick = () => { location.hash = '#/' + e.dataset.go; });
@@ -505,6 +505,127 @@ V.asistente = async main => {
       else toast('Redactar y actualizar minutas con fotos se hace desde la app por ahora.');
     } catch (e) { toast(errTxt(e)); }
   };
+  pintar();
+};
+
+
+/* ---------- Chat IA (evaluación guiada) ---------- */
+const CH = { eid: null, state: null, node: null, resp: null, log: [], busy: false, done: false };
+
+V.chat = async main => {
+  const nuevaEv = async () => {
+    Object.assign(CH, { eid: null, state: null, node: null, resp: null, log: [], busy: false, done: false });
+    const ev = await api('/api/evaluations', { method: 'POST', body: {} });
+    CH.eid = ev.id;
+    aplicar(await api(`/api/evaluations/${ev.id}/chat/start`, { method: 'POST', body: {} }));
+  };
+  const aplicar = r => {
+    CH.resp = r; CH.state = r.state; CH.node = r.node; CH.done = !!r.completed;
+    (r.notices || []).forEach(n => CH.log.push({ k: 'n', t: n.text || n.title || '' }));
+    (r.crossChecks || []).forEach(t => CH.log.push({ k: 'n', t }));
+  };
+  const enviar = async (answer, burbuja, extra) => {
+    if (CH.busy) return; CH.busy = true; pintar();
+    const n = CH.node; if (burbuja !== null) CH.log.push({ k: 'q', t: n.text, id: n.nodeId }, { k: 'a', t: burbuja ?? answer });
+    try {
+      const r = await api(`/api/evaluations/${CH.eid}/chat/answer`, { method: 'POST', body: { evaluationId: String(CH.eid), state: CH.state, answer, ...(extra || {}) } });
+      if (r.validationError) { CH.log.pop(); CH.log.pop(); CH.error = r.validationError; CH.resp = r; } else { CH.error = null; aplicar(r); }
+    } catch (e) { CH.error = errTxt(e); }
+    CH.busy = false; pintar();
+  };
+  const subirFotos = async files => {
+    if (!files.length || CH.busy) return; CH.busy = true; CH.error = null; pintar();
+    const fd = new FormData(); [...files].slice(0, 3).forEach(f => fd.append('files', f)); fd.append('state', CH.state); fd.append('mode', 'subir');
+    try { const r = await api(`/api/evaluations/${CH.eid}/chat/answer-photos`, { method: 'POST', body: fd }); if (r.validationError) CH.error = r.validationError; else aplicar(r); }
+    catch (e) { CH.error = errTxt(e); }
+    CH.busy = false; pintar();
+  };
+
+  const entrada = n => {
+    const t = n.inputType;
+    if (n.kind === 'evidence') {
+      const ev = n.evidence || {}, rev = ev.status === 'REVIEW';
+      if (rev) return `<div class="card" style="background:var(--s2)"><b>${esc(ev.label || 'Esto fue lo que leí')}</b><p class="muted">${esc(ev.message || 'Revisa los datos. Puedes corregirlos antes de continuar.')}</p>
+        <div class="grid g2" style="margin-top:8px">${(ev.fields || []).map(f => `<div><label class="f">${esc(f.label)}</label>${f.type === 'sel' ? `<select data-ef="${esc(f.key)}" style="width:100%">${(f.options || []).map(o => `<option value="${esc(o.value)}" ${String((ev.data || {})[f.key] ?? '') === String(o.value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>` : `<input type="text" data-ef="${esc(f.key)}" value="${esc((ev.data || {})[f.key] ?? '')}">`}</div>`).join('')}</div>
+        <div class="row" style="margin-top:12px"><button class="btn fill" id="evok">Correcto</button><button class="btn" id="evno">No es la foto correcta</button></div></div>`;
+      return `<div class="card" style="background:var(--s2)">${ev.message ? `<div class="err-t" style="margin-bottom:10px">${esc(ev.message)}</div>` : ''}<p class="muted" style="margin-bottom:10px">Sube de 1 a ${n.maxFiles || 3} fotos. ${n.skippable ? '' : '<b>Esta foto es obligatoria.</b>'}</p>
+        <div class="row"><label class="btn fill" for="fo" style="display:inline-block">Elegir foto</label><input type="file" id="fo" accept="image/*" multiple class="sr">
+        ${n.skippable ? '<button class="btn" id="evskip">Saltar</button>' : ''}${ev.canLater ? '<button class="btn" id="evlater">Subir después</button>' : ''}</div></div>`;
+    }
+    if (n.kind === 'summary') return `<button class="btn fill" id="ok">Continuar al diagnóstico</button>`;
+    if (t === 'CHOICE' || t === 'YES_NO') {
+      const ops = n.options || [{ value: 'SI', label: 'Sí' }, { value: 'NO', label: 'No' }];
+      return `<div class="row">${ops.map(o => `<button class="btn" data-o="${esc(o.value)}" data-ot="${o.other ? 1 : 0}" data-num="${o.numeric ? 1 : 0}" data-l="${esc(o.label)}">${esc(o.label)}</button>`).join('')}</div><div id="otro" style="display:none;margin-top:10px" class="row"><input type="text" id="otx" placeholder="Escribe cuál es" style="flex:1"><button class="btn fill" id="otok">Enviar</button></div>`;
+    }
+    if (t === 'MULTI_SELECT') {
+      const sel = new Set(n.selected || []);
+      return `<div>${(n.options || []).map(o => `<label class="row" style="padding:4px 0;cursor:pointer"><input type="checkbox" data-m="${esc(o.value)}" ${sel.has(o.value) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}
+        <div class="row" style="margin-top:6px"><input type="text" id="mx" placeholder="Otro (escribir)" style="flex:1"><button class="btn sm" id="madd">Agregar</button></div>
+        <div class="row" style="margin-top:12px"><button class="btn fill" id="mok">Continuar</button>${n.noneLabel ? `<button class="btn" id="mnone">${esc(n.noneLabel)}</button>` : ''}</div></div>`;
+    }
+    if (t === 'READ_CARD') return `<div class="grid g2">${(n.fields || []).map(f => `<div><label class="f">${esc(f.label)}</label><input type="text" data-rc="${esc(f.key)}" value="${esc((n.value || {})[f.key] ?? '')}"></div>`).join('')}</div><button class="btn fill" id="rcok" style="margin-top:12px">Correcto</button>`;
+    if (t === 'LINKS') return `<p class="muted">Un enlace por línea (Drive, OneDrive, YouTube u otro). Es opcional.</p><textarea id="lk" rows="4" placeholder="https://…"></textarea><div class="row" style="margin-top:10px"><button class="btn fill" id="lkok">Continuar</button></div>`;
+    if (t === 'STEPS') return `<div id="ps">${(n.value || []).map((p, i) => `<div class="row" style="margin-bottom:6px"><select data-pp="${i}"><option ${p.p === 'ID' ? 'selected' : ''}>ID</option><option ${p.p === 'Cliente' ? 'selected' : ''}>Cliente</option></select><input type="text" data-pt="${i}" value="${esc(p.t)}" style="flex:1"></div>`).join('')}</div><button class="btn fill" id="psok" style="margin-top:8px">Continuar</button>`;
+    if (t === 'WIFI_MEASURE') return `<p class="muted">Mide la señal en cada zona. Puedes dejar en blanco lo que no midas.</p>${(n.zones || []).map((z, i) => `<div class="row" style="margin-bottom:6px"><span style="width:160px">${esc(z)}</span><input type="text" data-wd="${i}" placeholder="dBm" style="width:90px"><input type="text" data-wp="${i}" placeholder="ping ms" style="width:90px"></div>`).join('')}<button class="btn fill" id="wok" style="margin-top:8px">Continuar</button>`;
+    // texto, número y fecha
+    const tipo = n.keyboard === 'date' ? 'date' : 'text';
+    const sug = (n.suggestions || []).length ? `<div class="row" style="margin-top:8px">${n.suggestions.map(x => `<button type="button" class="tab" data-sg="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
+    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}<button class="btn fill">Enviar</button></div>${sug}</form>`;
+  };
+
+  const pintar = () => {
+    const n = CH.node, r = CH.resp || {};
+    const pct = r.progressPercent ?? 0;
+    main.innerHTML = `<div class="page" style="max-width:820px">
+      <div class="row"><div class="sp"><b>${esc((n && n.blockLabel) || (CH.done ? 'Evaluación terminada' : 'Evaluación'))}</b><div class="tiny">${n && n.questionNumber ? `Pregunta ${n.questionNumber} de ~${n.questionsTotal}` : ''}</div></div><button class="btn sm danger" id="nv">Empezar otra</button></div>
+      <div class="prog"><i style="width:${pct}%"></i></div>
+      <div id="log">${CH.log.map(x => x.k === 'q' ? `<div style="margin:10px 0"><div class="card" style="display:inline-block;max-width:88%;padding:10px 14px">${esc(x.t)}</div></div>` : x.k === 'a' ? `<div class="row" style="justify-content:flex-end;margin:6px 0"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(x.t)}</div></div>` : `<div class="chip info" style="margin:6px 0;white-space:normal">${esc(x.t)}</div>`).join('')}</div>
+      ${CH.done ? `<div class="card"><h2>¡Listo! La evaluación quedó completa.</h2><p class="muted">La minuta se genera con tus respuestas.</p><div class="row" style="margin-top:10px"><button class="btn fill" id="pdf">Ver minuta (PDF)</button><a class="btn" href="#/reportes">Ir a Reportes</a></div></div>`
+      : n ? `<div class="card"><p style="font-weight:600;margin-bottom:12px;white-space:pre-wrap">${esc(n.text)}</p>${CH.error ? `<div class="err-t" style="margin-bottom:10px">${esc(CH.error)}</div>` : ''}${CH.busy ? '<p class="muted">Procesando…</p>' : entrada(n)}</div>` : '<div class="card"><p class="muted">Cargando…</p></div>'}</div>`;
+    window.scrollTo(0, document.body.scrollHeight);
+    ligar(n);
+  };
+  const ligar = n => {
+    $('#nv', main).onclick = async () => { try { await nuevaEv(); pintar(); } catch (e) { toast(errTxt(e)); } };
+    const pdf = $('#pdf', main); if (pdf) pdf.onclick = () => verMinuta(CH.eid, CH.eid);
+    if (!n || CH.busy || CH.done) return;
+    const q = (s, f) => { const e = $(s, main); if (e) e.onclick = f; };
+    if (n.kind === 'evidence') {
+      const fo = $('#fo', main); if (fo) fo.onchange = () => subirFotos(fo.files);
+      q('#evskip', () => enviar('@SKIP', 'Saltar'));
+      q('#evlater', () => enviar('@LATER', 'Subir después'));
+      q('#evno', () => enviar('@WRONG', null));
+      q('#evok', () => { const d = {}; main.querySelectorAll('[data-ef]').forEach(i => { d[i.dataset.ef] = i.value; }); enviar(JSON.stringify(d), 'Correcto'); });
+      return;
+    }
+    if (n.kind === 'summary') { q('#ok', () => enviar('OK', 'Continuar al diagnóstico')); return; }
+    const t = n.inputType;
+    if (t === 'CHOICE' || t === 'YES_NO') {
+      main.querySelectorAll('[data-o]').forEach(b => b.onclick = () => {
+        if (b.dataset.ot === '1') { $('#otro', main).style.display = 'flex'; $('#otx', main).dataset.v = b.dataset.o; $('#otx', main).dataset.num = b.dataset.num; $('#otx', main).focus(); return; }
+        enviar(b.dataset.o, b.dataset.l);
+      });
+      q('#otok', () => { const x = $('#otx', main), v = x.value.trim(); if (v) enviar('OTRO:' + v, v); });
+    } else if (t === 'MULTI_SELECT') {
+      q('#madd', () => { const x = $('#mx', main), v = x.value.trim(); if (!v) return; const l = document.createElement('label'); l.className = 'row'; l.style.cssText = 'padding:4px 0'; l.innerHTML = `<input type="checkbox" data-m="${esc(v)}" checked> ${esc(v)}`; x.parentElement.before(l); x.value = ''; });
+      q('#mok', () => { const a = [...main.querySelectorAll('[data-m]')].filter(c => c.checked).map(c => c.dataset.m); enviar(JSON.stringify(a), a.join(', ') || 'Ninguno'); });
+      q('#mnone', () => enviar('@NONE', n.noneLabel));
+    } else if (t === 'READ_CARD') {
+      q('#rcok', () => { const d = {}; main.querySelectorAll('[data-rc]').forEach(i => { d[i.dataset.rc] = i.value; }); enviar(JSON.stringify(d), 'Correcto'); });
+    } else if (t === 'LINKS') {
+      q('#lkok', () => { const a = $('#lk', main).value.split('\n').map(x => x.trim()).filter(Boolean).map((u, i) => ({ d: 'Video ' + (i + 1), u })); enviar(JSON.stringify(a), a.length ? a.length + ' enlace(s)' : 'Continuar sin enlaces'); });
+    } else if (t === 'STEPS') {
+      q('#psok', () => { const a = [...main.querySelectorAll('[data-pt]')].map(i => ({ p: main.querySelector(`[data-pp="${i.dataset.pt}"]`).value, t: i.value })); enviar(JSON.stringify(a), 'Pasos confirmados'); });
+    } else if (t === 'WIFI_MEASURE') {
+      q('#wok', () => { const d = {}; (n.zones || []).forEach((z, i) => { const dbm = main.querySelector(`[data-wd="${i}"]`).value, pg = main.querySelector(`[data-wp="${i}"]`).value; if (dbm || pg) d[z] = { dbm, ping: pg }; }); enviar(JSON.stringify(d), 'Medición enviada'); });
+    } else {
+      const f = $('#tf', main); if (f) { f.onsubmit = e => { e.preventDefault(); const v = $('#tx', main).value.trim(); enviar(v, v); }; $('#tx', main).focus(); }
+      main.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => enviar(b.dataset.sg, b.dataset.sg));
+    }
+  };
+
+  // una evaluación nueva, salvo que ya haya una en curso en esta sesión del navegador
+  if (!(CH.eid && CH.node)) await nuevaEv();
   pintar();
 };
 
