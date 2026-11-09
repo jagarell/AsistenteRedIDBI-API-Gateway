@@ -468,52 +468,138 @@ function permisos(rol, despues) {
 
 
 /* ---------- Asistente IA (consultas y reportes) ---------- */
-const CHAT = { msgs: [], estado: {}, reporte: null };
+const CHAT = { msgs: [], estado: {}, reporte: null, ctx: '', tipos: [], fotos: [], pend: [], nuevaVisita: false };
+const TIPOS_EVID = ['Frontis del local', 'Speedtest', 'ipconfig', 'Escáner de IP', 'Ubicación del router', 'Puertos del router', 'Etiqueta del router', 'AnyDesk de caja', 'Equipo de caja', 'Selftest de impresora', 'Etiqueta de impresora', 'Conexiones de impresora', 'Lugar de preparación', 'Zona de atención', 'Switch', 'Punto de red', 'Documento (RUC, factura o dirección)', 'Otra foto'];
+/* reduce la foto a 1600 px (JPEG) como hace la app, para subirla liviana */
+const reducirFoto = file => new Promise((ok, mal) => {
+  const u = URL.createObjectURL(file), im = new Image();
+  im.onload = () => { const k = Math.min(1, 1600 / Math.max(im.width, im.height, 1)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob(b => b ? ok(b) : mal(new Error('No se pudo leer la foto.')), 'image/jpeg', 0.82); };
+  im.onerror = () => { URL.revokeObjectURL(u); mal(new Error('No se pudo leer la foto.')); };
+  im.src = u;
+});
 
 V.asistente = async main => {
-  const SUG = ['Reportes', 'Minutas por validar', 'Mis pendientes de hoy', 'Reporte del mes'];
-  const bloque = b => {
+  const SUG = ['Nueva minuta', 'Actualizar una minuta', 'Reportes', 'Minutas por validar', 'Mis pendientes de hoy'];
+  const bloque = (b, mi, bi) => {
     const tabla = b.tabla ? `<div class="tw" style="margin-top:8px"><table><thead><tr>${b.tabla.columnas.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${b.tabla.filas.map(f => `<tr>${f.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
     const acc = (b.acciones || []).length ? `<div class="row" style="margin-top:10px">${b.acciones.map((a, i) => `<button class="btn sm ${a.principal ? 'fill' : ''}" data-a='${esc(JSON.stringify(a))}'>${esc(a.label)}</button>`).join('')}</div>` : '';
-    return `<div>${b.titulo ? `<b>${esc(b.titulo)}</b>` : ''}${b.texto ? `<p style="white-space:pre-wrap">${esc(b.texto)}</p>` : ''}${tabla}${acc}</div>`;
+    const filas = (b.filas || []).length ? `<div class="tw" style="margin-top:8px"><table><tbody>${b.filas.map(f => `<tr><td class="muted" style="width:38%">${esc(f[0])}</td><td>${f[1] === 'Sin dato' ? '<span class="muted">Sin dato</span>' : esc(f[1])}</td></tr>`).join('')}</tbody></table></div>` : '';
+    const lineas = (b.lineas || []).length ? `<ul class="lista" style="margin-top:8px">${b.lineas.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '';
+    const avisos = (b.avisos || []).map(a => `<div class="tiny" style="margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn)">${esc(a)}</div>`).join('');
+    const visita = b.nuevaVisitaTexto ? `<label class="row tiny" style="margin-top:8px"><input type="checkbox" data-nv ${b.nuevaVisita ? 'checked' : ''}> ${esc(b.nuevaVisitaTexto)}</label>` : '';
+    const acciones = (b.acciones || []).length ? `<div class="row" style="margin-top:10px">${b.acciones.map(a => `<button class="btn sm ${a.principal ? 'fill' : ''}" data-m="${mi}" data-bi="${bi}" ${b.hecho ? 'disabled' : ''} data-a='${esc(JSON.stringify({ id: a.id, label: a.label, datos: a.datos }))}'>${esc(a.label)}</button>`).join('')}</div>` : '';
+    return `<div>${b.titulo ? `<div class="row"><b class="sp">${esc(b.titulo)}</b>${b.badge ? `<span class="chip info">${esc(b.badge)}</span>` : ''}</div>` : ''}${b.texto ? `<p style="white-space:pre-wrap">${esc(b.texto)}</p>` : ''}${filas}${lineas}${tabla}${avisos}${visita}${acciones || acc}</div>`;
   };
   const pintar = () => {
+    const modo = CHAT.estado.modo;
     main.innerHTML = `<div class="page" style="display:flex;flex-direction:column;min-height:calc(100vh - 110px)">
-      <div id="msgs" style="flex:1">${CHAT.msgs.length ? CHAT.msgs.map(m => m.yo
-        ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(m.texto)}</div></div>`
-        : `<div style="margin-bottom:10px"><div class="card" style="max-width:92%;padding:12px 16px">${m.bloques.map(bloque).join('<hr style="border:0;border-top:1px solid var(--bd);margin:10px 0">')}</div></div>`).join('')
-        : `<div class="card"><h2>¿En qué te ayudo?</h2><p class="muted">Pídeme reportes de minutas, las que están por validar o tus pendientes de hoy. Respeto lo que tu rol puede ver.</p><div class="row" style="margin-top:12px">${SUG.map(x => `<button class="tab" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`}</div>
-      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><input type="text" id="t" placeholder="Escribe o dicta tu pedido" autocomplete="off" style="flex:1">${micBtn('mic')}<button class="btn fill" id="go">Enviar</button></form></div>`;
+      <div id="msgs" style="flex:1">${CHAT.msgs.length ? CHAT.msgs.map((m, mi) => m.yo
+        ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(m.texto)}${(m.adj || []).length ? `<div class="tiny" style="margin-top:4px;opacity:.9">📎 ${m.adj.map(esc).join(' · ')}</div>` : ''}</div></div>`
+        : `<div style="margin-bottom:10px"><div class="card" style="max-width:92%;padding:12px 16px">${m.bloques.filter(b => b.tipo !== 'accion').map((b, bi) => bloque(b, mi, bi)).join('<hr style="border:0;border-top:1px solid var(--bd);margin:10px 0">')}</div></div>`).join('')
+        : `<div class="card"><h2>¿En qué te ayudo?</h2><p class="muted">Redacta una minuta nueva con tus fotos, actualiza una existente, o pídeme reportes, las minutas por validar y tus pendientes de hoy. Respeto lo que tu rol puede ver.</p><div class="row" style="margin-top:12px">${SUG.map(x => `<button class="tab" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`}</div>
+      ${modo === 'new' || modo === 'upd' ? `<div class="row tiny" style="padding:6px 0"><span class="chip info">${modo === 'new' ? 'Redactando una minuta nueva' : 'Actualizando una minuta'}</span><button class="btn sm" id="salir" type="button">Salir de la minuta</button></div>` : ''}
+      ${CHAT.pend.length ? `<div class="row" style="padding:4px 0">${CHAT.pend.map((a, i) => `<span class="chip ok">📎 ${esc(a.tipo)} <button type="button" data-qa="${i}" aria-label="Quitar ${esc(a.tipo)}" style="border:0;background:none;color:inherit;cursor:pointer;font-weight:700">×</button></span>`).join('')}</div>` : ''}
+      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><button type="button" class="btn" id="clip" aria-label="Adjuntar evidencias" title="Adjuntar evidencias">📎</button><input type="file" id="fi" accept="image/*" hidden><input type="text" id="t" placeholder="Escribe o dicta tu pedido" autocomplete="off" style="flex:1">${micBtn('mic')}<button class="btn fill" id="go">Enviar</button></form></div>`;
     window.scrollTo(0, document.body.scrollHeight);
     main.querySelectorAll('[data-s]').forEach(b => b.onclick = () => enviar(b.dataset.s));
-    main.querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(JSON.parse(b.dataset.a)));
-    $('#f', main).onsubmit = e => { e.preventDefault(); const t = $('#t', main).value.trim(); if (t) enviar(t); };
+    main.querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(JSON.parse(b.dataset.a), +b.dataset.m, +b.dataset.bi));
+    main.querySelectorAll('[data-nv]').forEach(c => c.onchange = () => { CHAT.nuevaVisita = c.checked; });
+    main.querySelectorAll('[data-qa]').forEach(b => b.onclick = () => { CHAT.pend.splice(+b.dataset.qa, 1); pintar(); });
+    const sa = $('#salir', main); if (sa) sa.onclick = () => { reiniciar(); CHAT.msgs.push({ yo: false, bloques: [{ texto: 'Listo, salí de la minuta. ¿Qué más necesitas?' }] }); pintar(); };
+    const clip = $('#clip', main), fi = $('#fi', main);
+    clip.onclick = () => {
+      const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Adjuntar evidencias</h2><p class="muted" style="margin-bottom:10px">Elige qué foto envías y luego selecciónala. Se sube a la minuta cuando la redactes.</p><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-height:55vh;overflow:auto">${TIPOS_EVID.map(t => `<button class="card" data-tp="${esc(t)}" style="padding:14px 8px;text-align:center;font-size:13px">${esc(t)}</button>`).join('')}</div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" data-x>Cerrar</button></div>`);
+      d.el.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { CHAT.tipoSel = b.dataset.tp; d.close(); fi.click(); });
+    };
+    fi.onchange = async () => {
+      const f = fi.files[0]; fi.value = ''; if (!f || !CHAT.tipoSel) return;
+      try { CHAT.pend.push({ tipo: CHAT.tipoSel, blob: await reducirFoto(f) }); pintar(); } catch (e) { toast(errTxt(e)); }
+    };
+    $('#f', main).onsubmit = e => { e.preventDefault(); const t = $('#t', main).value.trim(); if (t || CHAT.pend.length) enviar(t); };
     const t = $('#t', main); if (t) t.focus();
     const mc = $('#mic', main); if (mc) mc.onclick = () => dictar(mc, $('#t', main));
   };
-  const enviar = async (texto, extra) => {
-    CHAT.msgs.push({ yo: true, texto }); pintar();
-    const body = { texto, ...CHAT.estado, ...(CHAT.reporte ? { reporte: CHAT.reporte } : {}), ...(extra || {}) };
+  const reiniciar = () => { CHAT.estado = {}; CHAT.ctx = ''; CHAT.tipos = []; CHAT.fotos = []; CHAT.pend = []; CHAT.nuevaVisita = false; };
+  const bot = (...bloques) => CHAT.msgs.push({ yo: false, bloques });
+  const enviar = async (texto, extra, opt = {}) => {
+    const nuevos = CHAT.pend.splice(0);
+    if (nuevos.length) { CHAT.tipos.push(...nuevos.map(a => a.tipo)); CHAT.fotos.push(...nuevos); }
+    if (!opt.sinEco) CHAT.msgs.push({ yo: true, texto: texto || 'Adjunté evidencias', adj: nuevos.map(a => a.tipo) });
+    let enviado = texto;
+    if (extra && extra.modo === 'new') CHAT.ctx = texto;
+    else if (CHAT.estado.modo === 'new') { const c = CHAT.ctx.trim(); CHAT.ctx = c ? c + (/[.;]$/.test(c) ? ' ' : '. ') + texto : texto; enviado = CHAT.ctx; }
+    pintar();
+    const body = { texto: enviado, ...CHAT.estado, ...(CHAT.tipos.length ? { adjuntos: CHAT.tipos } : {}), ...(CHAT.reporte ? { reporte: CHAT.reporte } : {}), ...(extra || {}) };
     try {
       const r = await api('/api/asistente/mensaje', { method: 'POST', body });
-      CHAT.estado = r.estado || {};
-      const rep = (r.bloques || []).find(b => b.consulta);
-      CHAT.reporte = rep ? rep.consulta : null;
-      CHAT.msgs.push({ yo: false, bloques: r.bloques || [{ texto: r.texto }] });
-    } catch (e) { CHAT.msgs.push({ yo: false, bloques: [{ texto: 'No pude responder: ' + errTxt(e) }] }); }
+      const est = r.estado || {};
+      if (est.modo === 'soporte') {
+        reiniciar();
+        bot({ texto: 'La minuta de soporte tiene un paso a paso (cliente, motivo, lo realizado y evidencias) que por ahora se hace desde la app.' });
+      } else {
+        CHAT.estado = est;
+        const act = (r.bloques || []).find(b => b.tipo === 'actualizar_minuta');
+        if (act) { CHAT.estado = { modo: 'upd', minutaId: act.minutaId }; CHAT.nuevaVisita = act.nuevaVisita === true; }
+        const rep = (r.bloques || []).find(b => b.consulta);
+        CHAT.reporte = rep ? rep.consulta : null;
+        // un borrador o un plan nuevo reemplaza al anterior: el viejo ya no se puede redactar ni aplicar
+        const nuevosTipos = new Set((r.bloques || []).map(b => b.tipo));
+        CHAT.msgs.forEach(m => (m.bloques || []).forEach(b => { if (nuevosTipos.has(b.tipo) && ['borrador_minuta', 'actualizar_minuta'].includes(b.tipo)) b.hecho = true; }));
+        CHAT.msgs.push({ yo: false, bloques: r.bloques || [{ texto: r.texto }] });
+      }
+    } catch (e) { bot({ texto: 'No pude responder: ' + errTxt(e) }); }
     pintar();
   };
-  const accion = async a => {
+  const verEnReportes = { tipo: 'texto', acciones: [{ id: 'abrir_minuta', label: 'Ver en Reportes', principal: true, datos: {} }] };
+  const redactar = async blk => {
+    blk.hecho = true; bot({ texto: 'Redactando la minuta…' }); pintar();
+    try {
+      const r = await api('/api/asistente/redactar', { method: 'POST', body: { datos: blk.datos } });
+      CHAT.msgs.pop();
+      const bl = r.bloques || [];
+      const id = (bl.find(b => b.tipo === 'accion') || {}).minutaId;
+      const fotos = CHAT.fotos.splice(0);
+      reiniciar();
+      CHAT.msgs.push({ yo: false, bloques: bl.filter(b => b.tipo !== 'accion') });
+      if (id && fotos.length) {
+        let ok = 0, mal = 0;
+        for (const f of fotos) {
+          const fd = new FormData(); fd.append('tipo', f.tipo); fd.append('archivo', f.blob, 'foto.jpg');
+          try { await api(`/api/minutas/${id}/fotos`, { method: 'POST', body: fd }); ok++; } catch (e) { mal++; }
+        }
+        bot({ texto: `${ok} foto${ok === 1 ? '' : 's'} subida${ok === 1 ? '' : 's'} a la minuta.${mal ? ` ${mal} no se pudo subir: súbela desde la minuta en la app.` : ''}` });
+      }
+      bot(verEnReportes);
+    } catch (e) { CHAT.msgs.pop(); blk.hecho = false; bot({ texto: 'No pude redactar la minuta: ' + errTxt(e) }); }
+    pintar();
+  };
+  const aplicar = async blk => {
+    blk.hecho = true; CHAT.msgs.push({ yo: true, texto: 'Aplicar y ver minuta' }); pintar();
+    try {
+      const m = await api(`/api/minutas/${blk.minutaId}/cambios/aplicar`, { method: 'POST', body: { items: blk.items, nuevaVisita: CHAT.nuevaVisita } });
+      reiniciar();
+      bot({ texto: `Listo. La minuta quedó en la v${m && m.version != null ? m.version : ''} y vuelve a validación del supervisor.` }, verEnReportes);
+    } catch (e) { blk.hecho = false; bot({ texto: 'No pude aplicar los cambios: ' + errTxt(e) }); }
+    pintar();
+  };
+  const accion = async (a, mi, bi) => {
+    const blk = ((CHAT.msgs[mi] || {}).bloques || []).filter(b => b.tipo !== 'accion')[bi] || {};
     try {
       if (a.id === 'descargar_reporte') {
         const r = await api('/api/asistente/reporte.xlsx', { method: 'POST', body: a.datos.consulta, raw: true });
         const u = URL.createObjectURL(await r.blob()); const l = document.createElement('a'); l.href = u; l.download = 'reporte-minutas.xlsx'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
-      } else if (a.id === 'ver_reportes') location.hash = '#/reportes';
+      } else if (a.id === 'ver_reportes' || a.id === 'abrir_minuta') location.hash = '#/reportes';
       else if (a.id === 'abrir_preguntas') location.hash = '#/preguntas';
       else if (a.id === 'texto') enviar((a.datos && a.datos.texto) || a.label);
+      else if (a.id === 'tipo_imp') { blk.hecho = true; CHAT.msgs.push({ yo: true, texto: 'Implementación' }); CHAT.estado = {}; await enviar((a.datos && a.datos.texto) || '', { modo: 'new', tipo: 'imp' }, { sinEco: true }); }
+      else if (a.id === 'tipo_sop') { CHAT.msgs.push({ yo: true, texto: 'Soporte / incidencia' }); bot({ texto: 'La minuta de soporte tiene un paso a paso (cliente, motivo, lo realizado y evidencias) que por ahora se hace desde la app.' }); pintar(); }
+      else if (a.id === 'agregar') { bot({ texto: 'Listo, cuéntame más o adjunta más evidencias con 📎. Cuando termines, toca «Redactar minuta» en el borrador.' }); pintar(); }
+      else if (a.id === 'redactar') await redactar(blk);
+      else if (a.id === 'aplicar') await aplicar(blk);
+      else if (a.id === 'cancelar') { reiniciar(); bot({ texto: 'Listo, no se cambió la minuta.' }); pintar(); }
       else if (a.id === 'sugerir') { await api('/api/asistente/sugerencia', { method: 'POST', body: { texto: a.datos.texto } }); toast('Sugerencia enviada al administrador.'); }
       else if (a.id === 'cancelar_programado') { await api(`/api/asistente/programados/${a.datos.id}/cancelar`, { method: 'POST', body: {} }); toast('Envío cancelado.'); }
-      else toast('Redactar y actualizar minutas con fotos se hace desde la app por ahora.');
+      else toast('Esa acción se hace desde la app por ahora.');
     } catch (e) { toast(errTxt(e)); }
   };
   pintar();
