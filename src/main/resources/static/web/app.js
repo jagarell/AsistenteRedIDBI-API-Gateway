@@ -186,11 +186,12 @@ V.reportes = async main => {
     const cuerpo = vista === 'tecnicos'
       ? `<div class="card"><h2>Por técnico</h2>${(r.tecnicos || []).length ? `<div class="tw"><table><thead><tr><th>Técnico</th><th>Supervisor</th><th>Completadas</th><th>A tiempo</th><th>Tiempo promedio</th><th>En mora</th><th>Devueltas</th><th>En riesgo</th></tr></thead><tbody>${r.tecnicos.map(t =>
           `<tr><td><b>${esc(t.tecnico)}</b></td><td>${esc(t.supervisor || '—')}</td><td>${t.completadas}/${t.total}</td><td>${t.aTiempoPct} %</td><td>${t.tiempoPromedioMin == null ? '—' : esc(t.tiempoPromedioMin) + ' min'}</td><td>${t.enMora}</td><td>${t.devueltas}</td><td>${t.enRiesgo}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay técnicos para mostrar.</div>'}</div>`
-      : `<div class="card"><h2>Minutas</h2>${(r.minutas || []).length ? `<div class="tw"><table><thead><tr><th>Local</th><th>Técnico</th><th>Supervisor</th><th>Fecha</th><th>Estado</th><th>Plazo</th><th>Puntaje</th></tr></thead><tbody>${r.minutas.map(m =>
-          `<tr><td><b>${esc(m.local)}</b></td><td>${esc(m.tecnico)}</td><td>${esc(m.supervisor)}</td><td>${fmtF(m.fecha)}</td><td>${chipEstado(m.estado)}</td><td>${esc(m.plazo || '—')}</td><td>${m.puntaje == null ? '—' : esc(m.puntaje) + ' %'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay minutas para mostrar.</div>'}</div>`;
+      : `<div class="card"><h2>Minutas</h2>${(r.minutas || []).length ? `<div class="tw"><table><thead><tr><th>Local</th><th>Técnico</th><th>Supervisor</th><th>Fecha</th><th>Estado</th><th>Plazo</th><th>Puntaje</th><th></th></tr></thead><tbody>${r.minutas.map(m =>
+          `<tr><td><b>${esc(m.local)}</b></td><td>${esc(m.tecnico)}</td><td>${esc(m.supervisor)}</td><td>${fmtF(m.fecha)}</td><td>${chipEstado(m.estado)}</td><td>${esc(m.plazo || '—')}</td><td>${m.puntaje == null ? '—' : esc(m.puntaje) + ' %'}</td><td>${m.evaluacionId ? `<button class="btn sm" data-ra="${m.evaluacionId}">Análisis IA</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay minutas para mostrar.</div>'}</div>`;
     main.innerHTML = `<div class="page">
       <div class="row"><div class="tabs">${(r.pestanas || ['general']).map(t => `<button class="tab ${t === vista ? 'on' : ''}" data-t="${t}">${tabs[t] || t}</button>`).join('')}</div><span class="sp"></span>${S.user.rol !== 'TECNICO' ? `<button class="btn" id="plz">${S.user.rol === 'ADMINISTRADOR' ? 'Editar plazos' : 'Ver plazos'}</button>` : ''}</div>
       ${kpis}${cuerpo}</div>`;
+    main.querySelectorAll('[data-ra]').forEach(b => b.onclick = () => verAnalisis(b.dataset.ra));
     main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { vista = b.dataset.t; cargar().catch(e => toast(errTxt(e))); });
     const pz = $('#plz', main); if (pz) pz.onclick = () => plazos(cargar);
   };
@@ -209,12 +210,13 @@ V.notificaciones = async main => {
       <div class="tabs">${Object.entries(b.conteos || {}).map(([k, n]) => `<button class="tab ${k === filtro ? 'on' : ''}" data-f="${esc(k)}">${k === 'ALL' ? 'Todas' : esc(k)} · ${n}</button>`).join('')}</div>
       <div class="card"><h2>Minutas</h2>${ms.length ? `<div class="tw"><table><thead><tr><th>Local</th><th>Técnico</th><th>Fecha</th><th>Estado</th><th></th></tr></thead><tbody>${ms.map(m =>
         `<tr><td><b>${esc(m.local)}</b></td><td>${esc(m.tecnico)}</td><td>${esc(m.fecha)} ${esc(m.hora || '')}</td><td>${chipEstado(m.estado)}</td><td><div class="row" style="justify-content:flex-end">
-          <button class="btn sm" data-ver="${m.id}" data-ev="${m.evaluationId ?? ''}">Ver minuta</button>
+          <button class="btn sm" data-ver="${m.id}" data-ev="${m.evaluationId ?? ''}">Ver minuta</button>${m.evaluationId ? `<button class="btn sm" data-an="${m.evaluationId}">Análisis IA</button>` : ''}
           ${puedeValidar && m.estado === 'Completa' ? `<button class="btn sm fill" data-val="${m.id}">Validar</button><button class="btn sm danger" data-rec="${m.id}">Devolver</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay minutas en este filtro.</div>'}</div>
       ${otros.length ? `<div class="card"><div class="row"><h2 style="margin:0">Avisos</h2><span class="sp"></span><button class="btn sm" id="leer">Marcar todo como leído</button></div>${otros.map(o => `<div style="padding:10px 0;border-bottom:1px solid var(--bd)"><div class="row"><b class="sp">${esc(o.titulo)}</b><span class="tiny">${fmtF(o.fecha)}</span>${o.leida ? '' : '<span class="chip info">Nuevo</span>'}</div><p class="muted">${esc(o.texto)}</p></div>`).join('')}</div>` : ''}
     </div>`;
     main.querySelectorAll('[data-f]').forEach(t => t.onclick = () => { filtro = t.dataset.f; cargar().catch(e => toast(errTxt(e))); });
     main.querySelectorAll('[data-ver]').forEach(t => t.onclick = () => verMinuta(t.dataset.ver, t.dataset.ev));
+    main.querySelectorAll('[data-an]').forEach(t => t.onclick = () => verAnalisis(t.dataset.an));
     main.querySelectorAll('[data-val]').forEach(t => t.onclick = async () => {
       t.disabled = true;
       try { await api(`/api/minutas/${t.dataset.val}/validar`, { method: 'POST', body: {} }); toast('Minuta validada.'); await cargar(); } catch (e) { toast(errTxt(e)); t.disabled = false; }
@@ -545,6 +547,22 @@ async function verMapa(eid) {
     <div style="flex:1;overflow:auto;background:var(--s2);border-radius:10px"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Topología de red">${links}${nodes}</svg></div>`, true);
 }
 
+
+/* ---------- Análisis IA de una evaluación ---------- */
+async function verAnalisis(eid) {
+  let a;
+  try { a = await api(`/api/evaluations/${eid}/analysis`); } catch (e) { toast(errTxt(e)); return; }
+  const tono = c => ({ green: 'ok', blue: 'info', orange: 'warn', red: 'err', yellow: 'warn' }[c] || '');
+  const barra = v => `<div class="prog" style="min-width:90px"><i style="width:${Math.round((v || 0) * 100)}%;${v < 0.5 ? 'background:#D32F2F' : v < 0.8 ? 'background:#F57C00' : ''}"></i></div>`;
+  dialogo(`<div class="row" style="padding:0 4px 10px"><b class="sp">Análisis IA</b><button class="btn sm" data-x>Cerrar</button></div>
+    <div style="flex:1;overflow:auto;padding:0 4px">
+      <div class="grid g3"><div class="card kpi ${a.globalScore >= 80 ? 'ok' : a.globalScore >= 60 ? 'warn' : 'err'}"><span>Puntaje general</span><b>${esc(a.globalScore)} %</b><small>de la visita</small></div><div class="card kpi"><span>Áreas evaluadas</span><b>${esc(a.evaluatedAreas)}</b><small>del local</small></div><div class="card kpi ${a.attentionRequired ? 'err' : 'ok'}"><span>Requieren atención</span><b>${esc(a.attentionRequired)}</b><small>${a.attentionRequired ? 'revisa los criterios en rojo' : 'todo en orden'}</small></div></div>
+      ${(a.results || []).map(r => `<div class="card" style="margin-top:14px"><div class="row"><h2 style="margin:0" class="sp">${esc(r.title)}</h2><span class="chip ${tono(r.color)}">${esc(r.status)}</span><b>${r.score == null ? '—' : esc(r.score) + ' %'}</b></div>
+        <p class="muted" style="margin:8px 0">${esc(r.description)}</p>
+        <div class="tw"><table><thead><tr><th>Criterio</th><th>Peso</th><th>Cumple</th><th>Detalle</th></tr></thead><tbody>${(r.criteria || []).map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.weight)}</td><td>${c.compliance == null ? '<span class="chip">N/A</span>' : `<div class="row" style="flex-wrap:nowrap">${barra(c.compliance)}<span class="tiny" style="white-space:nowrap">${Math.round(c.compliance * 100)} %</span></div>`}</td><td class="muted">${esc(c.detail)}</td></tr>`).join('')}</tbody></table></div></div>`).join('')}
+    </div>`, true);
+}
+
 /* ---------- Chat IA (evaluación guiada) ---------- */
 const CH = { eid: null, state: null, node: null, resp: null, log: [], busy: false, done: false };
 
@@ -688,7 +706,7 @@ V.chat = async main => {
       <div class="row"><div class="sp"><b>${esc((n && n.blockLabel) || (CH.done ? 'Evaluación terminada' : 'Evaluación'))}</b><div class="tiny">${n && n.questionNumber ? `Pregunta ${n.questionNumber} de ~${n.questionsTotal}` : ''}</div></div><button class="btn sm danger" id="nv">Empezar otra</button></div>
       <div class="prog"><i style="width:${pct}%"></i></div>
       <div id="log">${CH.log.map(x => x.k === 'q' ? `<div style="margin:10px 0"><div class="card" style="display:inline-block;max-width:88%;padding:10px 14px">${esc(x.t)}</div></div>` : x.k === 'a' ? `<div class="row" style="justify-content:flex-end;margin:6px 0"><button class="btn sm" data-edit="${esc(x.id)}" aria-label="Editar esta respuesta" style="padding:2px 8px">Editar</button><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(x.t)}</div></div>` : `<div class="chip info" style="margin:6px 0;white-space:normal">${esc(x.t)}</div>`).join('')}</div>
-      ${CH.done ? `<div class="card"><h2>¡Listo! La evaluación quedó completa.</h2><p class="muted">La minuta se genera con tus respuestas.</p><div class="row" style="margin-top:10px"><button class="btn fill" id="pdf">Ver minuta (PDF)</button><button class="btn" id="mapa">Ver mapa de red</button><a class="btn" href="#/reportes">Ir a Reportes</a></div></div>`
+      ${CH.done ? `<div class="card"><h2>¡Listo! La evaluación quedó completa.</h2><p class="muted">La minuta se genera con tus respuestas.</p><div class="row" style="margin-top:10px"><button class="btn fill" id="pdf">Ver minuta (PDF)</button><button class="btn" id="mapa">Ver mapa de red</button><button class="btn" id="anal">Ver análisis IA</button><a class="btn" href="#/reportes">Ir a Reportes</a></div></div>`
       : n ? `<div class="card"><p style="font-weight:600;margin-bottom:12px;white-space:pre-wrap">${esc(n.text)}</p>${CH.error ? `<div class="err-t" style="margin-bottom:10px">${esc(CH.error)}</div>` : ''}${CH.busy ? '<p class="muted">Procesando…</p>' : entrada(n)}</div>` : '<div class="card"><p class="muted">Cargando…</p></div>'}</div>`;
     window.scrollTo(0, document.body.scrollHeight);
     ligar(n);
@@ -697,6 +715,7 @@ V.chat = async main => {
     $('#nv', main).onclick = async () => { try { await nuevaEv(); pintar(); } catch (e) { toast(errTxt(e)); } };
     const pdf = $('#pdf', main); if (pdf) pdf.onclick = () => verMinuta(CH.eid, CH.eid);
     const mp = $('#mapa', main); if (mp) mp.onclick = () => verMapa(CH.eid);
+    const an = $('#anal', main); if (an) an.onclick = () => verAnalisis(CH.eid);
     main.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editar(b.dataset.edit));
     if (!n || CH.busy || CH.done) return;
     const q = (s, f) => { const e = $(s, main); if (e) e.onclick = f; };
