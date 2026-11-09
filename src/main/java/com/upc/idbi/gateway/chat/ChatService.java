@@ -380,4 +380,27 @@ public class ChatService {
             log.warn("No se pudieron persistir las respuestas del chat para la evaluación {}", evaluationId, ex);
         }
     }
+
+    /** Fotos del chat de una evaluación, sin los documentos del cliente: una por código y alcance (la más reciente). */
+    public List<Map<String, Object>> listarEvidencias(Long evaluationId) {
+        evaluationRepository.findById(evaluationId)
+                .orElseThrow(() -> new IllegalArgumentException("La evaluación no existe."));
+        Map<String, Evidence> ultimas = new java.util.LinkedHashMap<>();
+        for (Evidence e : evidenceRepository.findByEvaluationIdAndEvidenceCodeIsNotNullOrderByUploadedAtAsc(evaluationId)) {
+            if ("DOC_CLIENTE".equals(e.getEvidenceCode())) continue;
+            ultimas.put(e.getEvidenceCode() + "|" + (e.getChatScope() == null ? "" : e.getChatScope()), e);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Evidence e : ultimas.values()) {
+            String etiqueta = e.getChatEquipo() != null && !e.getChatEquipo().isBlank() ? e.getChatEquipo()
+                    : e.getChatArea() != null && !e.getChatArea().isBlank() ? e.getChatArea() : e.getEvidenceCode();
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("code", e.getEvidenceCode());
+            m.put("scope", e.getChatScope() == null ? "" : e.getChatScope());
+            m.put("label", etiqueta);
+            m.put("url", storageService.urlFor(evaluationId, e.getStoredFileName()));
+            out.add(m);
+        }
+        return out;
+    }
 }
