@@ -523,7 +523,14 @@ V.chat = async main => {
     CH.resp = r; CH.state = r.state; CH.node = r.node; CH.done = !!r.completed;
     (r.notices || []).forEach(n => CH.log.push({ k: 'n', t: n.text || n.title || '' }));
     (r.crossChecks || []).forEach(t => CH.log.push({ k: 'n', t }));
+    persistir();
   };
+  // la evaluación en curso queda en este navegador para poder retomarla (el servidor no guarda el estado de la conversación)
+  const persistir = () => {
+    if (CH.done) { store.del('na.chat'); return; }
+    store.set('na.chat', JSON.stringify({ eid: CH.eid, state: CH.state, node: CH.node, prog: CH.resp && CH.resp.progressPercent, log: CH.log.slice(-80), user: S.user && S.user.id }));
+  };
+  const guardada = () => { try { const g = JSON.parse(store.get('na.chat') || 'null'); return g && g.eid && g.state && g.node && g.user === (S.user && S.user.id) ? g : null; } catch (e) { return null; } };
   const enviar = async (answer, burbuja, extra) => {
     if (CH.busy) return; CH.busy = true; pintar();
     const n = CH.node; if (burbuja !== null) CH.log.push({ k: 'q', t: n.text, id: n.nodeId }, { k: 'a', t: burbuja ?? answer, id: n.nodeId });
@@ -552,6 +559,33 @@ V.chat = async main => {
     CH.busy = false; pintar();
   };
 
+  const adjuntar = async (files, tipo) => {
+    if (!files.length || CH.busy) return;
+    const fd = new FormData(); [...files].slice(0, 3).forEach(f => fd.append('files', f)); fd.append('state', CH.state); if (tipo) fd.append('tipo', tipo);
+    toast('Leyendo el documento…');
+    let r;
+    try { r = await api(`/api/evaluations/${CH.eid}/chat/adjunto`, { method: 'POST', body: fd }); } catch (e) { toast(errTxt(e)); return; }
+    if (r.status === 'PDF') { toast('Sube una foto del documento, no un PDF.'); return; }
+    if (r.status === 'UNAVAILABLE') { toast('La lectura automática no está disponible ahora. Escribe los datos.'); return; }
+    if (r.status === 'TIPO') {
+      const d = dialogo(`<h2 style="font-size:18px;margin-bottom:8px">¿Qué documento es?</h2><div class="row">${Object.entries(r.tipos || {}).map(([k, l]) => `<button class="btn" data-ty="${esc(k)}">${esc(l)}</button>`).join('')}</div>`);
+      d.el.querySelectorAll('[data-ty]').forEach(b => b.onclick = () => { d.close(); adjuntar(files, b.dataset.ty); });
+      return;
+    }
+    const cs = r.campos || [];
+    if (!cs.length) { toast('No pude leer datos en el documento. Escríbelos a mano.'); return; }
+    const d = dialogo(`<h2 style="font-size:18px;margin-bottom:4px">Datos leídos del documento</h2><p class="muted" style="margin-bottom:10px">${esc(r.titulo || '')}. Marca lo que quieres usar; puedes corregirlo.</p>${r.nota ? `<p class="tiny" style="margin-bottom:8px">${esc(r.nota)}</p>` : ''}
+      ${cs.map((c, i) => `<div style="padding:6px 0;border-bottom:1px solid var(--bd)"><label class="row" style="cursor:pointer"><input type="checkbox" data-ck="${i}" ${c.usar ? 'checked' : ''} ${c.respondido ? 'disabled' : ''}><b>${esc(c.label)}</b>${c.respondido ? '<span class="chip">Ya respondida</span>' : ''}</label><input type="text" data-cv="${i}" value="${esc(c.valor)}" style="margin-top:4px">${c.error ? `<div class="tiny" style="color:var(--err)">${esc(c.error)}</div>` : ''}</div>`).join('')}
+      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-x>Cancelar</button><button class="btn fill" id="uso">Usar los datos marcados</button></div>`);
+    $('#uso', d.el).onclick = async () => {
+      const campos = cs.map((c, i) => ({ nodeId: c.nodeId, valor: d.el.querySelector(`[data-cv="${i}"]`).value.trim(), ok: d.el.querySelector(`[data-ck="${i}"]`).checked })).filter(c => c.ok && c.valor);
+      d.close(); if (!campos.length) return;
+      CH.busy = true; pintar();
+      try { const u = await api(`/api/evaluations/${CH.eid}/chat/adjunto/usar`, { method: 'POST', body: { state: CH.state, campos } }); CH.log.push({ k: 'n', t: `Usé ${campos.length} dato(s) del documento.` }); CH.error = null; aplicar(u); } catch (e) { CH.error = errTxt(e); }
+      CH.busy = false; pintar();
+    };
+  };
+
   const ubicar = () => {
     const r = $('#gpsr', main), nombre = (CH.log.find(x => x.k === 'a' && x.id === 'P01c') || {}).t || '';
     if (!navigator.geolocation) { r.innerHTML = '<p class="err-t" style="margin-top:8px">Este navegador no puede dar tu ubicación.</p>'; return; }
@@ -576,6 +610,8 @@ V.chat = async main => {
     try { const cur = await api(`/api/evaluations/${CH.eid}/minuta/ediciones`).catch(() => ({})); await api(`/api/evaluations/${CH.eid}/minuta/ediciones`, { method: 'PUT', body: { ...(cur || {}), gps: CH.gps } }); } catch (e) { /* las coordenadas son un complemento: no frenan la evaluación */ }
   };
 
+  const adjMarkup = n => n.attachHint ? `<div style="margin-top:10px"><label class="btn sm" for="adj" style="display:inline-block">📎 Adjuntar un documento</label><input type="file" id="adj" accept="image/*" multiple class="sr"><span class="tiny"> Ficha RUC, recibo, tarjeta… la IA lee los datos.</span></div>` : '';
+
   const entrada = n => {
     const t = n.inputType;
     if (n.kind === 'evidence') {
@@ -590,7 +626,7 @@ V.chat = async main => {
     if (n.kind === 'summary') return `<button class="btn fill" id="ok">Continuar al diagnóstico</button>`;
     if (t === 'CHOICE' || t === 'YES_NO') {
       const ops = n.options || [{ value: 'SI', label: 'Sí' }, { value: 'NO', label: 'No' }];
-      return `<div class="row">${ops.map(o => `<button class="btn ${n.editing && n.currentValue === o.value ? 'fill' : ''}" data-o="${esc(o.value)}" data-ot="${o.other ? 1 : 0}" data-num="${o.numeric ? 1 : 0}" data-l="${esc(o.label)}">${esc(o.label)}</button>`).join('')}</div><div id="otro" style="display:none;margin-top:10px" class="row"><input type="text" id="otx" placeholder="Escribe cuál es" style="flex:1"><button class="btn fill" id="otok">Enviar</button></div>`;
+      return `<div class="row">${ops.map(o => `<button class="btn ${n.editing && n.currentValue === o.value ? 'fill' : ''}" data-o="${esc(o.value)}" data-ot="${o.other ? 1 : 0}" data-num="${o.numeric ? 1 : 0}" data-l="${esc(o.label)}">${esc(o.label)}</button>`).join('')}</div><div id="otro" style="display:none;margin-top:10px" class="row"><input type="text" id="otx" placeholder="Escribe cuál es" style="flex:1"><button class="btn fill" id="otok">Enviar</button></div>${adjMarkup(n)}`;
     }
     if (t === 'MULTI_SELECT') {
       const sel = new Set(n.selected || []);
@@ -606,7 +642,7 @@ V.chat = async main => {
     const gps = n.nodeId === 'P03' ? `<div style="margin-top:10px"><button type="button" class="btn sm" id="gps">📍 Usar mi ubicación (Google Maps)</button><div id="gpsr"></div></div>` : '';
     const tipo = n.keyboard === 'date' ? 'date' : 'text';
     const sug = (n.suggestions || []).length ? `<div class="row" style="margin-top:8px">${n.suggestions.map(x => `<button type="button" class="tab" data-sg="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
-    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}<button class="btn fill">Enviar</button></div>${sug}${gps}</form>`;
+    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}<button class="btn fill">Enviar</button></div>${sug}${gps}${adjMarkup(n)}</form>`;
   };
 
   const pintar = () => {
@@ -646,6 +682,7 @@ V.chat = async main => {
         if (b.dataset.ot === '1') { $('#otro', main).style.display = 'flex'; $('#otx', main).dataset.v = b.dataset.o; $('#otx', main).dataset.num = b.dataset.num; $('#otx', main).focus(); return; }
         enviar(b.dataset.o, b.dataset.l);
       });
+      const aj2 = $('#adj', main); if (aj2) aj2.onchange = () => adjuntar(aj2.files, n.attachHint);
       q('#otok', () => { const x = $('#otx', main), v = x.value.trim(); if (v) enviar('OTRO:' + v, v); });
     } else if (t === 'MULTI_SELECT') {
       q('#madd', () => { const x = $('#mx', main), v = x.value.trim(); if (!v) return; const l = document.createElement('label'); l.className = 'row'; l.style.cssText = 'padding:4px 0'; l.innerHTML = `<input type="checkbox" data-m="${esc(v)}" checked> ${esc(v)}`; x.parentElement.before(l); x.value = ''; });
@@ -663,11 +700,21 @@ V.chat = async main => {
       const f = $('#tf', main); if (f) { f.onsubmit = e => { e.preventDefault(); const v = $('#tx', main).value.trim(); enviar(v, v); }; $('#tx', main).focus(); }
       main.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => enviar(b.dataset.sg, b.dataset.sg));
       const g = $('#gps', main); if (g) g.onclick = ubicar;
+      const aj = $('#adj', main); if (aj) aj.onchange = () => adjuntar(aj.files, n.attachHint);
     }
   };
 
-  // una evaluación nueva, salvo que ya haya una en curso en esta sesión del navegador
-  if (!(CH.eid && CH.node)) await nuevaEv();
+  // retomar la evaluación a medias o empezar una nueva, salvo que ya haya una en curso en esta pestaña
+  if (!(CH.eid && CH.node)) {
+    const g = guardada();
+    if (g) {
+      main.innerHTML = `<div class="page" style="max-width:640px"><div class="card"><h2>Tienes una evaluación a medias</h2><p class="muted">Va en ${esc(g.prog ?? 0)} %. ¿La retomas o empiezas una nueva?</p><div class="row" style="margin-top:12px"><button class="btn fill" id="rt">Continuar la anterior</button><button class="btn" id="nw">Empezar una nueva</button></div></div></div>`;
+      $('#rt', main).onclick = () => { Object.assign(CH, { eid: g.eid, state: g.state, node: g.node, resp: { progressPercent: g.prog }, log: [...g.log, { k: 'n', t: 'Retomaste la evaluación que dejaste a medias.' }], busy: false, done: false, error: null }); pintar(); };
+      $('#nw', main).onclick = async () => { try { await nuevaEv(); pintar(); } catch (e) { toast(errTxt(e)); } };
+      return;
+    }
+    await nuevaEv();
+  }
   pintar();
 };
 
