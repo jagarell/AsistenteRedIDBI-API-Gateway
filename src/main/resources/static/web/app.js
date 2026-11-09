@@ -526,19 +526,54 @@ V.chat = async main => {
   };
   const enviar = async (answer, burbuja, extra) => {
     if (CH.busy) return; CH.busy = true; pintar();
-    const n = CH.node; if (burbuja !== null) CH.log.push({ k: 'q', t: n.text, id: n.nodeId }, { k: 'a', t: burbuja ?? answer });
+    const n = CH.node; if (burbuja !== null) CH.log.push({ k: 'q', t: n.text, id: n.nodeId }, { k: 'a', t: burbuja ?? answer, id: n.nodeId });
     try {
       const r = await api(`/api/evaluations/${CH.eid}/chat/answer`, { method: 'POST', body: { evaluationId: String(CH.eid), state: CH.state, answer, ...(extra || {}) } });
       if (r.validationError) { CH.log.pop(); CH.log.pop(); CH.error = r.validationError; CH.resp = r; } else { CH.error = null; aplicar(r); }
     } catch (e) { CH.error = errTxt(e); }
     CH.busy = false; pintar();
   };
-  const subirFotos = async files => {
+  const subirFotos = async (files, extra) => {
     if (!files.length || CH.busy) return; CH.busy = true; CH.error = null; pintar();
-    const fd = new FormData(); [...files].slice(0, 3).forEach(f => fd.append('files', f)); fd.append('state', CH.state); fd.append('mode', 'subir');
+    CH.lastFiles = [...files].slice(0, 3);
+    const fd = new FormData(); CH.lastFiles.forEach(f => fd.append('files', f)); fd.append('state', CH.state); fd.append('mode', (extra && extra.mode) || 'subir'); if (extra && extra.nota) fd.append('nota', extra.nota);
     try { const r = await api(`/api/evaluations/${CH.eid}/chat/answer-photos`, { method: 'POST', body: fd }); if (r.validationError) CH.error = r.validationError; else aplicar(r); }
     catch (e) { CH.error = errTxt(e); }
     CH.busy = false; pintar();
+  };
+
+  const editar = async id => {
+    if (CH.busy) return; CH.busy = true; CH.error = null; pintar();
+    try {
+      const r = await api(`/api/evaluations/${CH.eid}/chat/edit`, { method: 'POST', body: { evaluationId: String(CH.eid), state: CH.state, nodeId: id, mode: 'reopen' } });
+      if (r.validationError) CH.error = r.validationError;
+      else { CH.log = CH.log.filter(x => x.id !== id); CH.log.push({ k: 'n', t: 'Editando una respuesta anterior: lo que respondiste después se conserva.' }); aplicar(r); }
+    } catch (e) { CH.error = errTxt(e); }
+    CH.busy = false; pintar();
+  };
+
+  const ubicar = () => {
+    const r = $('#gpsr', main), nombre = (CH.log.find(x => x.k === 'a' && x.id === 'P01c') || {}).t || '';
+    if (!navigator.geolocation) { r.innerHTML = '<p class="err-t" style="margin-top:8px">Este navegador no puede dar tu ubicación.</p>'; return; }
+    r.innerHTML = '<p class="muted" style="margin-top:8px">Buscando tu ubicación…</p>';
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      try {
+        const geo = await api('/api/geo/reverse', { method: 'POST', body: { lat, lng, precision_m: accuracy, nombre_local: nombre } });
+        CH.gps = { lat, lng, acc: Math.round(accuracy || 0), t: new Date().toLocaleString('es-PE'), geo };
+        const co = geo.coincidencia;
+        r.innerHTML = `<div class="card" style="margin-top:8px;background:var(--s2)"><b>Ubicación GPS del local</b><div class="tiny">${lat.toFixed(5)}, ${lng.toFixed(5)} · precisión ±${CH.gps.acc} m</div>
+          ${geo.direccion ? `<p style="margin-top:6px">${esc(geo.direccion)}</p><div class="tiny">${esc([geo.distrito, geo.departamento].filter(Boolean).join(' / '))}</div>` : '<p class="muted" style="margin-top:6px">No se encontró la dirección: escríbela a mano. El enlace al mapa sí se guarda.</p>'}
+          ${co ? `<p class="chip ok" style="margin-top:8px;white-space:normal">Coincide con «${esc(co.nombre)}» a ${esc(co.distancia_m)} m: la ubicación queda confirmada.</p>` : ''}
+          <div class="row" style="margin-top:10px">${geo.direccion ? '<button type="button" class="btn sm fill" id="gusar">Usar esta dirección</button>' : ''}<a class="btn sm" target="_blank" rel="noopener" href="${esc(geo.mapa_url || 'https://www.google.com/maps?q=' + lat + ',' + lng)}">Ver en Google Maps</a></div></div>`;
+        const u = $('#gusar', main); if (u) u.onclick = () => { $('#tx', main).value = geo.direccion; guardarGps(); };
+        guardarGps();
+      } catch (e) { r.innerHTML = `<p class="err-t" style="margin-top:8px">${esc(errTxt(e))}</p>`; }
+    }, err => { r.innerHTML = `<p class="err-t" style="margin-top:8px">${err.code === 1 ? 'Permite el acceso a tu ubicación en el navegador.' : 'No se pudo obtener tu ubicación.'}</p>`; }, { enableHighAccuracy: true, timeout: 15000 });
+  };
+  const guardarGps = async () => {
+    if (!CH.gps) return;
+    try { const cur = await api(`/api/evaluations/${CH.eid}/minuta/ediciones`).catch(() => ({})); await api(`/api/evaluations/${CH.eid}/minuta/ediciones`, { method: 'PUT', body: { ...(cur || {}), gps: CH.gps } }); } catch (e) { /* las coordenadas son un complemento: no frenan la evaluación */ }
   };
 
   const entrada = n => {
@@ -550,12 +585,12 @@ V.chat = async main => {
         <div class="row" style="margin-top:12px"><button class="btn fill" id="evok">Correcto</button><button class="btn" id="evno">No es la foto correcta</button></div></div>`;
       return `<div class="card" style="background:var(--s2)">${ev.message ? `<div class="err-t" style="margin-bottom:10px">${esc(ev.message)}</div>` : ''}<p class="muted" style="margin-bottom:10px">Sube de 1 a ${n.maxFiles || 3} fotos. ${n.skippable ? '' : '<b>Esta foto es obligatoria.</b>'}</p>
         <div class="row"><label class="btn fill" for="fo" style="display:inline-block">Elegir foto</label><input type="file" id="fo" accept="image/*" multiple class="sr">
-        ${n.skippable ? '<button class="btn" id="evskip">Saltar</button>' : ''}${ev.canLater ? '<button class="btn" id="evlater">Subir después</button>' : ''}</div></div>`;
+        ${n.skippable ? '<button class="btn" id="evskip">Saltar</button>' : ''}${ev.canLater ? '<button class="btn" id="evlater">Subir después</button>' : ''}${ev.canForce && CH.lastFiles ? '<button class="btn" id="evforce">Guardar como correcta</button>' : ''}</div></div>`;
     }
     if (n.kind === 'summary') return `<button class="btn fill" id="ok">Continuar al diagnóstico</button>`;
     if (t === 'CHOICE' || t === 'YES_NO') {
       const ops = n.options || [{ value: 'SI', label: 'Sí' }, { value: 'NO', label: 'No' }];
-      return `<div class="row">${ops.map(o => `<button class="btn" data-o="${esc(o.value)}" data-ot="${o.other ? 1 : 0}" data-num="${o.numeric ? 1 : 0}" data-l="${esc(o.label)}">${esc(o.label)}</button>`).join('')}</div><div id="otro" style="display:none;margin-top:10px" class="row"><input type="text" id="otx" placeholder="Escribe cuál es" style="flex:1"><button class="btn fill" id="otok">Enviar</button></div>`;
+      return `<div class="row">${ops.map(o => `<button class="btn ${n.editing && n.currentValue === o.value ? 'fill' : ''}" data-o="${esc(o.value)}" data-ot="${o.other ? 1 : 0}" data-num="${o.numeric ? 1 : 0}" data-l="${esc(o.label)}">${esc(o.label)}</button>`).join('')}</div><div id="otro" style="display:none;margin-top:10px" class="row"><input type="text" id="otx" placeholder="Escribe cuál es" style="flex:1"><button class="btn fill" id="otok">Enviar</button></div>`;
     }
     if (t === 'MULTI_SELECT') {
       const sel = new Set(n.selected || []);
@@ -568,9 +603,10 @@ V.chat = async main => {
     if (t === 'STEPS') return `<div id="ps">${(n.value || []).map((p, i) => `<div class="row" style="margin-bottom:6px"><select data-pp="${i}"><option ${p.p === 'ID' ? 'selected' : ''}>ID</option><option ${p.p === 'Cliente' ? 'selected' : ''}>Cliente</option></select><input type="text" data-pt="${i}" value="${esc(p.t)}" style="flex:1"></div>`).join('')}</div><button class="btn fill" id="psok" style="margin-top:8px">Continuar</button>`;
     if (t === 'WIFI_MEASURE') return `<p class="muted">Mide la señal en cada zona. Puedes dejar en blanco lo que no midas.</p>${(n.zones || []).map((z, i) => `<div class="row" style="margin-bottom:6px"><span style="width:160px">${esc(z)}</span><input type="text" data-wd="${i}" placeholder="dBm" style="width:90px"><input type="text" data-wp="${i}" placeholder="ping ms" style="width:90px"></div>`).join('')}<button class="btn fill" id="wok" style="margin-top:8px">Continuar</button>`;
     // texto, número y fecha
+    const gps = n.nodeId === 'P03' ? `<div style="margin-top:10px"><button type="button" class="btn sm" id="gps">📍 Usar mi ubicación (Google Maps)</button><div id="gpsr"></div></div>` : '';
     const tipo = n.keyboard === 'date' ? 'date' : 'text';
     const sug = (n.suggestions || []).length ? `<div class="row" style="margin-top:8px">${n.suggestions.map(x => `<button type="button" class="tab" data-sg="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : '';
-    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}<button class="btn fill">Enviar</button></div>${sug}</form>`;
+    return `<form id="tf"><div class="row"><${n.multiline ? 'textarea rows="3"' : 'input type="' + tipo + '"'} id="tx" placeholder="${esc(n.hint || '')}" value="${esc(n.defaultValue || '')}" style="flex:1" autocomplete="off">${n.multiline ? esc(n.defaultValue || '') + '</textarea>' : ''}<button class="btn fill">Enviar</button></div>${sug}${gps}</form>`;
   };
 
   const pintar = () => {
@@ -579,7 +615,7 @@ V.chat = async main => {
     main.innerHTML = `<div class="page" style="max-width:820px">
       <div class="row"><div class="sp"><b>${esc((n && n.blockLabel) || (CH.done ? 'Evaluación terminada' : 'Evaluación'))}</b><div class="tiny">${n && n.questionNumber ? `Pregunta ${n.questionNumber} de ~${n.questionsTotal}` : ''}</div></div><button class="btn sm danger" id="nv">Empezar otra</button></div>
       <div class="prog"><i style="width:${pct}%"></i></div>
-      <div id="log">${CH.log.map(x => x.k === 'q' ? `<div style="margin:10px 0"><div class="card" style="display:inline-block;max-width:88%;padding:10px 14px">${esc(x.t)}</div></div>` : x.k === 'a' ? `<div class="row" style="justify-content:flex-end;margin:6px 0"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(x.t)}</div></div>` : `<div class="chip info" style="margin:6px 0;white-space:normal">${esc(x.t)}</div>`).join('')}</div>
+      <div id="log">${CH.log.map(x => x.k === 'q' ? `<div style="margin:10px 0"><div class="card" style="display:inline-block;max-width:88%;padding:10px 14px">${esc(x.t)}</div></div>` : x.k === 'a' ? `<div class="row" style="justify-content:flex-end;margin:6px 0"><button class="btn sm" data-edit="${esc(x.id)}" aria-label="Editar esta respuesta" style="padding:2px 8px">Editar</button><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(x.t)}</div></div>` : `<div class="chip info" style="margin:6px 0;white-space:normal">${esc(x.t)}</div>`).join('')}</div>
       ${CH.done ? `<div class="card"><h2>¡Listo! La evaluación quedó completa.</h2><p class="muted">La minuta se genera con tus respuestas.</p><div class="row" style="margin-top:10px"><button class="btn fill" id="pdf">Ver minuta (PDF)</button><a class="btn" href="#/reportes">Ir a Reportes</a></div></div>`
       : n ? `<div class="card"><p style="font-weight:600;margin-bottom:12px;white-space:pre-wrap">${esc(n.text)}</p>${CH.error ? `<div class="err-t" style="margin-bottom:10px">${esc(CH.error)}</div>` : ''}${CH.busy ? '<p class="muted">Procesando…</p>' : entrada(n)}</div>` : '<div class="card"><p class="muted">Cargando…</p></div>'}</div>`;
     window.scrollTo(0, document.body.scrollHeight);
@@ -588,12 +624,17 @@ V.chat = async main => {
   const ligar = n => {
     $('#nv', main).onclick = async () => { try { await nuevaEv(); pintar(); } catch (e) { toast(errTxt(e)); } };
     const pdf = $('#pdf', main); if (pdf) pdf.onclick = () => verMinuta(CH.eid, CH.eid);
+    main.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editar(b.dataset.edit));
     if (!n || CH.busy || CH.done) return;
     const q = (s, f) => { const e = $(s, main); if (e) e.onclick = f; };
     if (n.kind === 'evidence') {
       const fo = $('#fo', main); if (fo) fo.onchange = () => subirFotos(fo.files);
       q('#evskip', () => enviar('@SKIP', 'Saltar'));
       q('#evlater', () => enviar('@LATER', 'Subir después'));
+      q('#evforce', () => {
+        const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Guardar como correcta</h2><p class="muted" style="margin-bottom:10px">La IA no pudo confirmar la foto, pero tú sabes que es la correcta. Queda marcada como guardada por el técnico.</p><label class="f">Nota (opcional)</label><textarea id="fn" rows="3"></textarea><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-x>Cancelar</button><button class="btn fill" id="fok">Guardar como correcta</button></div>`);
+        $('#fok', d.el).onclick = () => { const nota = $('#fn', d.el).value.trim(); d.close(); subirFotos(CH.lastFiles, { mode: 'forzar', nota }); };
+      });
       q('#evno', () => enviar('@WRONG', null));
       q('#evok', () => { const d = {}; main.querySelectorAll('[data-ef]').forEach(i => { d[i.dataset.ef] = i.value; }); enviar(JSON.stringify(d), 'Correcto'); });
       return;
@@ -621,6 +662,7 @@ V.chat = async main => {
     } else {
       const f = $('#tf', main); if (f) { f.onsubmit = e => { e.preventDefault(); const v = $('#tx', main).value.trim(); enviar(v, v); }; $('#tx', main).focus(); }
       main.querySelectorAll('[data-sg]').forEach(b => b.onclick = () => enviar(b.dataset.sg, b.dataset.sg));
+      const g = $('#gps', main); if (g) g.onclick = ubicar;
     }
   };
 
