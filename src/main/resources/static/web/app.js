@@ -151,50 +151,164 @@ function tablaMinutas(ms) {
     `<tr><td><b>${esc(m.local)}</b></td><td>${esc(m.tecnico)}</td><td>${fmtF(m.fecha)}</td><td>${chipEstado(m.estado)}</td><td>${m.puntaje == null ? '—' : esc(m.puntaje) + ' %'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
+const hm = min => { if (min == null) return '—'; const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h} h${m ? ' ' + m + ' min' : ''}` : `${m} min`; };
+const filtroReporte = f => { store.set('na.rep.filtro', JSON.stringify(f)); location.hash = '#/reportes'; };
+
 V.panel = async main => {
-  const [p, res] = await Promise.all([api('/api/panel'), api('/api/panel/resumen?periodo=hoy').catch(() => null)]);
-  const k = p.kpi, dias = Object.entries(p.porDia || {}), max = Math.max(1, ...dias.map(d => d[1]));
-  const est = Object.entries(p.porEstado || {});
-  main.innerHTML = `<div class="page">
-    <div class="grid g4">
-      <div class="card kpi"><span>Minutas</span><b>${k.minutas}</b><small>últimos ${p.dias} días</small></div>
-      <div class="card kpi lila"><span>Por validar</span><b>${k.porValidar}</b><small>esperan al supervisor</small></div>
-      <div class="card kpi warn"><span>Pendientes</span><b>${k.pendientes}</b><small>${k.rechazadas} devueltas a revisión</small></div>
-      <div class="card kpi ok"><span>Validadas</span><b>${k.validadas}</b><small>${esc(k.horasAhorradas)} h ahorradas${p.ahorro ? ' · S/ ' + esc(p.ahorro.soles) : ''}</small></div>
-    </div>
-    <div class="grid g2">
-      <div class="card"><h2>Minutas por día</h2><div class="bars">${dias.map(([d, n]) => `<div title="${esc(d)}: ${n}"><i style="height:${Math.round(n / max * 100)}%"></i><small>${esc(d.slice(8))}</small></div>`).join('')}</div></div>
-      <div class="card"><h2>Por estado</h2>${est.map(([e, n]) => `<div class="row" style="padding:6px 0"><span class="sp">${esc(e)}</span><b>${n}</b></div>`).join('')}</div>
-    </div>
-    <div class="card"><h2>Avance de hoy · meta ${p.metaDiaria} por técnico</h2>${(p.avanceHoy || []).length ? (p.avanceHoy).map(a => `<div style="padding:8px 0"><div class="row"><b class="sp">${esc(a.tecnico)}</b><span class="muted">${a.terminadas}/${a.meta} terminadas · ${a.enCurso} en curso</span></div><div class="prog" style="margin-top:6px"><i style="width:${Math.min(100, Math.round(a.terminadas / Math.max(1, a.meta) * 100))}%"></i></div></div>`).join('') : '<div class="empty">Sin técnicos con avance hoy.</div>'}</div>
-    ${(p.porSupervisor || []).length ? `<div class="card"><h2>Supervisores</h2><div class="tw"><table><thead><tr><th>Supervisor</th><th>Técnicos</th><th>Por validar</th><th>Horas de espera</th></tr></thead><tbody>${p.porSupervisor.map(s => `<tr><td><b>${esc(s.supervisor)}</b></td><td>${s.tecnicos}</td><td>${s.porValidar}</td><td>${s.horasEspera == null ? '—' : esc(s.horasEspera) + ' h'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
-  </div>`;
+  const RANGOS = [['hoy', 'Hoy'], ['ayer', 'Ayer'], ['7', '7 días'], ['14', '14 días'], ['mes', 'Mes'], ['todo', 'Todo'], ['rango', 'Rango de fechas']];
+  const COL = { 'Pendiente': '#D9A55C', 'Completa': '#7F77C4', 'En revisión': '#CF7069', 'Validada': '#5AA27F' };
+  const RUB = ['#5B8DEF', '#7F77C4', '#5AA27F', '#D9A55C', '#CF7069', '#4FB3BF'];
+  const ICO = { total: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5', val: 'M6 9a6 6 0 0 1 12 0c0 6 3 7 3 7H3s3-1 3-7M10 20a2 2 0 0 0 4 0', pend: 'M12 7v5l3 2M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0', rev: 'M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3', ok: 'M5 12l5 5L20 7', hrs: 'M12 7v5l3 2M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0' };
+  const hoy = new Date().toISOString().slice(0, 10);
+  let per = store.get('na.panel.periodo') || '14', desde = hoy, hasta = hoy;
+  if (!RANGOS.some(r => r[0] === per)) per = '14';
+  const esAdmin = S.user.rol === 'ADMINISTRADOR';
+
+  const pintar = async () => {
+    const q = `?periodo=${per}` + (per === 'rango' ? `&desde=${desde}&hasta=${hasta}` : '');
+    const [r, base, tm] = await Promise.all([api('/api/panel/resumen' + q), api('/api/panel').catch(() => null), api('/api/panel/tiempos').catch(() => null)]);
+    const ind = r.indicadores, lbl = r.periodo.etiqueta.toLowerCase();
+    const vs = ind.totalAnterior > 0 ? Math.round(100 * (ind.total - ind.totalAnterior) / ind.totalAnterior) : null;
+    const kpis = [
+      ['total', 'Total minutas', ind.total, vs == null ? 'Sin periodo anterior' : `${vs >= 0 ? '▲' : '▼'} ${Math.abs(vs)} % vs. periodo anterior`, '', null],
+      ['val', 'Por validar', ind.porValidar, `${ind.porValidarRiesgo} con riesgo`, 'lila', 'notificaciones'],
+      ['pend', 'Pendientes de cerrar', ind.pendientes, `${ind.pendientesConAnalisis} con análisis IA listo`, 'warn', { estado: ['Pendiente'] }],
+      ['rev', 'En revisión', ind.enRevision, 'Devueltas al técnico', 'err', { estado: ['En revisión'] }],
+      ['ok', 'Validadas', ind.validadas, `${ind.validadasPct} % del total`, 'ok', { estado: ['Validada'] }],
+      ['hrs', 'Horas ahorradas', `${ind.horasAhorradas} h`, ind.ahorroPct == null ? 'Sin tiempos aún' : `−${ind.ahorroPct} % por minuta`, 'ok', {}],
+    ];
+    const barras = r.porDia.barras, max = Math.max(1, ...barras.map(b => b.cantidad));
+    const tot = r.estados.reduce((s, e) => s + e.cantidad, 0), C = 2 * Math.PI * 72;
+    let acum = 0;
+    const arcos = r.estados.filter(e => e.cantidad > 0).map(e => { const len = C * e.cantidad / (tot || 1); const s = `<circle cx="100" cy="100" r="72" fill="none" stroke="${COL[e.estado]}" stroke-width="24" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-acum}" transform="rotate(-90 100 100)"><title>${esc(e.estado)}: ${e.cantidad}</title></circle>`; acum += len; return s; }).join('');
+    const filasT = (tm?.rubros || []).filter(f => f.anteriorMin != null || f.actualMin != null);
+    const maxT = Math.max(1, ...filasT.map(f => Math.max(f.anteriorMin || 0, f.actualMin || 0)));
+    const negMax = Math.max(1, ...r.negocios.map(n => n.cantidad));
+    const meta = r.metaHorasTecnico;
+    const equipo = r.equipo.map(t => ({ ...t, total: t.pendiente + t.completa + t.enRevision + t.validada }));
+    main.innerHTML = `<div class="page pn">
+      <div class="tabs" role="tablist" aria-label="Periodo">${RANGOS.map(([k, l]) => `<button class="tab ${k === per ? 'on' : ''}" role="tab" aria-selected="${k === per}" data-p="${k}">${l}</button>`).join('')}</div>
+      ${per === 'rango' ? `<div class="row pn-fechas"><label class="tiny" for="pd">Desde</label><input id="pd" type="date" value="${desde}" max="${hoy}"><label class="tiny" for="ph">Hasta</label><input id="ph" type="date" value="${hasta}" max="${hoy}"><button class="btn fill sm" id="pa">Aplicar</button></div>` : ''}
+      <div class="grid g3 pn-kpis">${kpis.map(([ic, l, v, chip, tono, go], i) => `<a class="card kpi ${tono}" href="#/${go === 'notificaciones' ? 'notificaciones' : 'reportes'}" data-k="${i}"><div class="row"><span class="sp">${l}</span><i class="pn-ico">${`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${ICO[ic]}"/></svg>`}</i></div><b>${esc(v)}</b><div class="row"><span class="chip ${tono || 'info'}">${esc(chip)}</span><span class="sp"></span><small class="pn-go">Ver →</small></div></a>`).join('')}</div>
+      <div class="grid pn-g21">
+        <div class="card"><div class="row"><div class="sp"><h2 style="margin:0">Minutas por ${r.porDia.unidad === 'dia' ? 'día' : r.porDia.unidad === 'anio' ? 'año' : r.porDia.unidad} terminadas</h2><span class="tiny">Completa, En revisión y Validada · ${lbl}</span></div><span class="chip">${r.porDia.total} en total</span></div>
+          <div class="bars pn-bars" role="img" aria-label="Minutas terminadas por ${esc(r.porDia.unidad)}">${barras.map(b => `<div title="${esc(b.etiqueta)}: ${b.cantidad}"><small>${b.cantidad || ''}</small><i style="height:${Math.round(b.cantidad / max * 100)}%"></i><small>${esc(b.etiqueta)}</small></div>`).join('')}</div></div>
+        <div class="card"><h2 style="margin:0">Minutas por estado</h2><span class="tiny">${lbl}</span>
+          <div class="pn-dona"><div class="pn-dbox"><svg viewBox="0 0 200 200" role="img" aria-label="Minutas por estado"><circle cx="100" cy="100" r="72" fill="none" stroke="var(--s3)" stroke-width="24"/>${arcos}</svg><span class="pn-dc"><b>${tot}</b><small>minutas</small></span></div>
+          <div class="pn-dl">${r.estados.map(e => `<div class="row"><i class="pn-pt" style="background:${COL[e.estado]}"></i><span class="sp">${esc(e.estado)}</span><b>${e.cantidad}</b><span class="tiny" style="width:38px;text-align:right">${e.pct} %</span></div>`).join('')}</div></div></div>
+      </div>
+      <div class="grid g3 pn-g3">
+        <div class="card"><div class="row"><div class="sp"><h2 style="margin:0">Tiempo por minuta</h2><span class="tiny">Visita + pasar a limpio · antes vs con la app</span></div>${tm?.mejoraPromedioPct != null ? `<span class="chip ok">−${tm.mejoraPromedioPct} %</span>` : ''}</div>
+          ${filasT.length ? filasT.map(f => `<div style="margin-top:12px"><div class="row"><span class="sp">${esc(f.rubro)}</span><span class="tiny">${f.anteriorMin != null ? `<s>${hm(f.anteriorMin)}</s>` : '—'} → <b style="color:var(--ok)">${f.actualMin != null ? hm(f.actualMin) : '—'}</b></span></div><div class="prog" style="margin-top:4px"><i style="width:${Math.round((f.anteriorMin || 0) / maxT * 100)}%;background:var(--tx3)"></i></div><div class="prog" style="margin-top:3px"><i style="width:${Math.round((f.actualMin || 0) / maxT * 100)}%;background:var(--ok)"></i></div></div>`).join('') : '<div class="empty">Aún no hay tiempos registrados.</div>'}
+          <p class="tiny" style="margin-top:14px">${tm?.mejoraPromedioPct != null ? `<b>Mejora vs mes anterior:</b> ${tm.mejoraPromedioPct} % menos por minuta en promedio (${esc(tm.anteriorNombre)} → ${esc(tm.mesNombre)}${tm.anteriorOrigen === 'manual' ? ', el anterior son los plazos que anotó la empresa' : ''}).<br>` : ''}<b>Ahorro estimado:</b> ${r.tiempos.horasAhorradas} h de técnico ≈ S/ ${Math.round(r.tiempos.solesAhorro)} (a S/ ${r.tiempos.solesPorHora} por hora${esAdmin ? '; se cambia en Editar plazos' : ''}).</p>
+          <a href="#" id="pz" class="tiny" style="font-weight:600">${esAdmin ? 'Editar plazos y tiempos →' : 'Ver plazos y tiempos →'}</a></div>
+        <div class="card"><h2 style="margin:0">Indicadores que alertan</h2><span class="tiny">${lbl}</span>
+          <div style="margin-top:8px">${r.alertas.map((a, i) => `<button type="button" class="pn-al" data-al="${i}"><span class="n ${a.cantidad ? 'err' : 'ok'}">${a.cantidad}</span><span class="sp"><b>${esc(a.texto)}</b></span><span class="muted">›</span></button>`).join('')}</div></div>
+        <div class="card"><h2 style="margin:0">Locales por tipo de negocio</h2><span class="tiny">${lbl}</span>
+          <div style="margin-top:12px">${r.negocios.length ? r.negocios.map((n, i) => `<div class="pn-h"><span>${esc(n.rubro)}</span><div class="prog"><i style="width:${Math.round(n.cantidad / negMax * 100)}%;background:${RUB[i % RUB.length]}"></i></div><b>${n.cantidad}</b></div>`).join('') : '<div class="empty">Sin minutas en este periodo.</div>'}</div></div>
+      </div>
+      <div class="grid pn-g21">
+        <div class="card"><div class="row"><div class="sp"><h2 style="margin:0">Avance y tiempos del equipo</h2><span class="tiny">${lbl} · minutas en cada estado y horas promedio por minuta</span></div><a href="#/reportes" class="tiny" style="font-weight:600" id="rm">Reporte y mora →</a></div>
+          <div class="pn-leg">${Object.entries(COL).map(([e, c]) => `<span><i class="pn-pt" style="background:${c}"></i>${e}</span>`).join('')}</div>
+          <p class="tiny" style="margin:10px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Técnicos · horas promedio por minuta (meta ${meta} h)</p>
+          ${equipo.length ? equipo.map(t => `<div class="pn-t"><span class="av">${esc(iniciales(t.tecnico))}</span><b class="pn-tn">${esc(t.tecnico)}</b><span class="pn-st" title="${t.total} minutas">${t.total ? [['pendiente', 'Pendiente'], ['completa', 'Completa'], ['enRevision', 'En revisión'], ['validada', 'Validada']].map(([k, e]) => t[k] ? `<span style="width:${100 * t[k] / t.total}%;background:${COL[e]}" title="${e}: ${t[k]}"></span>` : '').join('') : ''}</span><span class="tiny pn-tt">${t.total}</span><span class="chip ${t.horasPromedio == null ? '' : t.horasPromedio <= meta ? 'ok' : 'err'}">${t.horasPromedio == null ? '—' : hm(t.horasPromedio * 60)}</span></div>`).join('') : '<div class="empty">No hay técnicos en tu equipo.</div>'}
+          ${(base?.porSupervisor || []).length ? `<p class="tiny" style="margin:16px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Supervisores · horas promedio en validar (meta 24 h)</p>${base.porSupervisor.map(s => `<div class="pn-t"><span class="av">${esc(iniciales(s.supervisor))}</span><b class="pn-tn">${esc(s.supervisor)}<small class="tiny" style="display:block;font-weight:400">${s.porValidar} por validar</small></b><span class="sp"></span><span class="chip ${s.horasEspera == null ? '' : s.horasEspera <= 24 ? 'ok' : 'err'}">${s.horasEspera == null ? '—' : hm(s.horasEspera * 60)}</span></div>`).join('')}` : ''}</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card"><h2 style="margin:0">Por validar primero</h2><span class="tiny">Las de menor puntaje tienen riesgo</span>
+            <div style="margin-top:8px">${r.porValidarPrimero.length ? r.porValidarPrimero.map(m => `<button type="button" class="pn-al" data-pv="${m.id}" data-ev="${m.evaluationId > 0 ? m.evaluationId : ''}"><span class="n ${m.puntaje < 60 ? 'err' : m.puntaje < 80 ? 'warn' : 'ok'}">${m.puntaje}</span><span class="sp"><b>${esc(m.local)}</b><small class="tiny" style="display:block">${esc(m.tecnico)}</small></span><span class="muted">›</span></button>`).join('') : '<div class="empty">Nada por validar.</div>'}</div></div>
+          <div class="card"><h2 style="margin:0">Actividad reciente</h2><span class="tiny">Quién hizo qué y cuándo. Nada se borra sin dejar registro.</span>
+            <div style="margin-top:8px">${r.actividad.length ? r.actividad.map(a => `<div class="pn-ac"><span class="tiny">${esc(a.ts)}</span><span><b>${esc(a.usuario)}</b> ${esc(a.accion)}</span></div>`).join('') : '<div class="empty">Sin actividad en el periodo.</div>'}</div></div>
+        </div>
+      </div>
+    </div>`;
+    main.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { per = b.dataset.p; store.set('na.panel.periodo', per); pintar().catch(e => toast(errTxt(e))); });
+    const pa = $('#pa', main); if (pa) pa.onclick = () => { const d = $('#pd', main).value, h = $('#ph', main).value; if (!d || !h) { toast('Elige las dos fechas.'); return; } desde = d; hasta = h; pintar().catch(e => toast(errTxt(e))); };
+    main.querySelectorAll('[data-k]').forEach(a => a.onclick = e => { const go = kpis[+a.dataset.k][5]; if (go && go !== 'notificaciones') { e.preventDefault(); filtroReporte(go); } });
+    main.querySelectorAll('[data-al]').forEach(b => b.onclick = () => { CHAT.pre = r.alertas[+b.dataset.al].consulta; location.hash = '#/asistente'; });
+    main.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => verMinuta(b.dataset.pv, b.dataset.ev));
+    const pz = $('#pz', main); if (pz) pz.onclick = e => { e.preventDefault(); plazos(() => pintar()); };
+  };
+  await pintar();
 };
 
 V.reportes = async main => {
-  let vista = null;
+  let vista = null, F = {}, opts = {}, sel = null;
+  try { const g = JSON.parse(store.get('na.rep.filtro') || 'null'); if (g) F = g; } catch (e) { /* sin filtro guardado */ }
+  store.del('na.rep.filtro');
+  const hoy = new Date(), iso = d => d.toISOString().slice(0, 10);
+  const RAPIDO = [['dia', 'Un día'], ['7', 'Últimos 7 días'], ['mes', 'Este mes'], ['rango', 'Rango']];
+  const CAMPOS = [['tecnico', 'Técnico'], ['supervisor', 'Supervisor'], ['rubro', 'Rubro'], ['estado', 'Estado'], ['criticidad', 'Criticidad'], ['esfuerzo', 'Nivel de esfuerzo'], ['plazo', 'Plazo']];
+  const url = v => {
+    const p = new URLSearchParams(); if (v) p.set('vista', v);
+    if (F.desde) p.set('desde', F.desde); if (F.hasta) p.set('hasta', F.hasta);
+    CAMPOS.forEach(([k]) => (F[k] || []).forEach(x => p.append(k, x)));
+    const s = p.toString(); return '/api/reportes' + (s ? '?' + s : '');
+  };
+  const nFiltros = () => CAMPOS.filter(([k]) => (F[k] || []).length).length + (F.desde || F.hasta ? 1 : 0);
   const cargar = async () => {
-    const r = await api('/api/reportes' + (vista ? '?vista=' + vista : ''));
+    const r = await api(url(vista));
     vista = r.vista;
+    if (!opts[vista] && vista !== 'tecnicos') {
+      const b = nFiltros() ? await api('/api/reportes?vista=' + vista) : r;
+      const u = k => [...new Set((b.minutas || []).map(m => m[k]).filter(x => x && x !== '—'))].sort();
+      opts[vista] = { tecnico: u('tecnico'), supervisor: u('supervisor'), rubro: u('rubro'), estado: ['Pendiente', 'Completa', 'En revisión', 'Validada'], criticidad: ['Viable', 'Observado', 'Riesgo', 'Sin análisis'], esfuerzo: ['Básica', 'Intermedia', 'Compleja'], plazo: ['A tiempo', 'En mora'] };
+    }
     const ind = r.indicadores || {};
     const tabs = { general: 'General', tecnicos: 'Por técnico', mis: 'Mis minutas' };
+    const pctC = ind.total ? Math.round(100 * ind.completadas / ind.total) : 0;
     const kpis = vista === 'tecnicos' ? '' : `<div class="grid g4">
-        <div class="card kpi ok"><span>Completadas</span><b>${ind.completadas ?? 0}</b><small>de ${ind.total ?? 0}</small></div>
-        <div class="card kpi"><span>A tiempo</span><b>${ind.aTiempoPct ?? 0} %</b><small>dentro del plazo</small></div>
-        <div class="card kpi"><span>Tiempo promedio</span><b>${ind.tiempoPromedioMin == null ? '—' : ind.tiempoPromedioMin + ' min'}</b><small>por minuta</small></div>
-        <div class="card kpi err"><span>En riesgo</span><b>${ind.enRiesgo ?? 0}</b><small>con riesgo detectado</small></div>
+        <div class="card kpi ok"><span>Minutas completadas</span><b>${ind.completadas ?? 0} / ${ind.total ?? 0}</b><small>${pctC} % del total</small></div>
+        <div class="card kpi ${(ind.aTiempoPct ?? 0) >= 80 ? 'ok' : 'warn'}"><span>A tiempo</span><b>${ind.aTiempoPct ?? 0} %</b><small>${(ind.aTiempoPct ?? 0) >= 80 ? 'Cumple la meta de 80 %' : 'Bajo la meta de 80 %'}</small></div>
+        <div class="card kpi"><span>Tiempo promedio</span><b>${hm(ind.tiempoPromedioMin)}</b><small>Meta: 2 h por minuta</small></div>
+        <div class="card kpi err"><span>En riesgo</span><b>${ind.enRiesgo ?? 0}</b><small>Criticidad: Riesgo</small></div>
       </div>`;
+    const o = opts[vista] || {};
+    const filtros = vista === 'tecnicos' ? '' : `<div class="card rp-f"><div class="row" style="flex-wrap:wrap;gap:8px">
+        <label class="tiny" for="rf">Fecha</label><select id="rf" style="width:auto"><option value="">Todas</option>${RAPIDO.map(([k, l]) => `<option value="${k}" ${F.rapido === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${F.rapido === 'dia' ? `<input type="date" id="fd" value="${esc(F.desde || '')}" max="${iso(hoy)}" style="width:auto">` : ''}
+        ${F.rapido === 'rango' ? `<input type="date" id="fd" value="${esc(F.desde || '')}" max="${iso(hoy)}" style="width:auto"><input type="date" id="fh" value="${esc(F.hasta || '')}" max="${iso(hoy)}" style="width:auto">` : ''}
+        ${CAMPOS.filter(([k]) => !(vista === 'mis' && (k === 'tecnico' || k === 'supervisor'))).map(([k, l]) => `<details class="rp-dd"><summary class="${(F[k] || []).length ? 'on' : ''}">${l}${(F[k] || []).length ? ' · ' + F[k].length : ''}</summary><div class="rp-dm">${(o[k] || []).map(x => `<label class="row tiny"><input type="checkbox" data-c="${k}" value="${esc(x)}" ${(F[k] || []).includes(x) ? 'checked' : ''}> ${esc(x)}</label>`).join('') || '<span class="tiny">Sin opciones</span>'}</div></details>`).join('')}
+        ${nFiltros() ? '<button class="btn sm" id="lf">Limpiar</button>' : ''}</div></div>`;
     const cuerpo = vista === 'tecnicos'
       ? `<div class="card"><h2>Por técnico</h2>${(r.tecnicos || []).length ? `<div class="tw"><table><thead><tr><th>Técnico</th><th>Supervisor</th><th>Completadas</th><th>A tiempo</th><th>Tiempo promedio</th><th>En mora</th><th>Devueltas</th><th>En riesgo</th></tr></thead><tbody>${r.tecnicos.map(t =>
-          `<tr><td><b>${esc(t.tecnico)}</b></td><td>${esc(t.supervisor || '—')}</td><td>${t.completadas}/${t.total}</td><td>${t.aTiempoPct} %</td><td>${t.tiempoPromedioMin == null ? '—' : esc(t.tiempoPromedioMin) + ' min'}</td><td>${t.enMora}</td><td>${t.devueltas}</td><td>${t.enRiesgo}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay técnicos para mostrar.</div>'}</div>`
-      : `<div class="card"><h2>Minutas</h2>${(r.minutas || []).length ? `<div class="tw"><table><thead><tr><th>Local</th><th>Técnico</th><th>Supervisor</th><th>Fecha</th><th>Estado</th><th>Plazo</th><th>Puntaje</th><th></th></tr></thead><tbody>${r.minutas.map(m =>
-          `<tr><td><b>${esc(m.local)}</b></td><td>${esc(m.tecnico)}</td><td>${esc(m.supervisor)}</td><td>${fmtF(m.fecha)}</td><td>${chipEstado(m.estado)}</td><td>${esc(m.plazo || '—')}</td><td>${m.puntaje == null ? '—' : esc(m.puntaje) + ' %'}</td><td>${m.evaluacionId ? `<button class="btn sm" data-ra="${m.evaluacionId}">Análisis IA</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay minutas para mostrar.</div>'}</div>`;
+          `<tr><td><b>${esc(t.tecnico)}</b></td><td>${esc(t.supervisor || '—')}</td><td>${t.completadas}/${t.total}</td><td>${t.aTiempoPct} %</td><td>${hm(t.tiempoPromedioMin)}</td><td>${t.enMora}</td><td>${t.devueltas}</td><td>${t.enRiesgo}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay técnicos para mostrar.</div>'}</div>`
+      : `<div class="card"><div class="row"><h2 style="margin:0" class="sp">Minutas</h2><span class="tiny">${(r.minutas || []).length} de ${r.total ?? 0} minutas</span></div>${(r.minutas || []).length ? `<div class="tw"><table><thead><tr><th>Fecha</th><th>Técnico</th><th>Supervisor</th><th>Rubro</th><th>Estado</th><th>Criticidad</th><th>Esfuerzo</th><th>Plazo</th><th>Local</th><th></th></tr></thead><tbody>${r.minutas.map(m =>
+          `<tr class="rp-row ${sel === m.id ? 'sel' : ''}" data-m="${m.id}" data-l="${esc(m.local)}"><td>${fmtF(m.fecha)}</td><td>${esc(m.tecnico)}</td><td>${esc(m.supervisor)}</td><td>${esc(m.rubro || '—')}</td><td>${chipEstado(m.estado)}</td><td><span class="chip ${{ Viable: 'ok', Observado: 'warn', Riesgo: 'err' }[m.criticidad] || ''}">${esc(m.criticidad)}${m.puntaje == null ? '' : ' · ' + esc(m.puntaje) + ' %'}</span></td><td>${esc(m.esfuerzo)}</td><td><span class="chip ${m.plazo === 'En mora' ? 'err' : 'ok'}">${esc(m.plazo || '—')}</span></td><td><b>${esc(m.local)}</b></td><td>${m.evaluacionId ? `<button class="btn sm" data-ra="${m.evaluacionId}">Análisis IA</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">Ninguna minuta coincide con los filtros.</div>`}</div>
+        <div id="tz"></div>`;
     main.innerHTML = `<div class="page">
       <div class="row"><div class="tabs">${(r.pestanas || ['general']).map(t => `<button class="tab ${t === vista ? 'on' : ''}" data-t="${t}">${tabs[t] || t}</button>`).join('')}</div><span class="sp"></span>${S.user.rol !== 'TECNICO' ? `<button class="btn" id="plz">${S.user.rol === 'ADMINISTRADOR' ? 'Editar plazos' : 'Ver plazos'}</button>` : ''}</div>
-      ${kpis}${cuerpo}</div>`;
-    main.querySelectorAll('[data-ra]').forEach(b => b.onclick = () => verAnalisis(b.dataset.ra));
-    main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { vista = b.dataset.t; cargar().catch(e => toast(errTxt(e))); });
+      ${filtros}${kpis}${cuerpo}</div>`;
+    const re = () => cargar().catch(e => toast(errTxt(e)));
+    main.querySelectorAll('[data-ra]').forEach(b => b.onclick = e => { e.stopPropagation(); verAnalisis(b.dataset.ra); });
+    main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { vista = b.dataset.t; sel = null; re(); });
     const pz = $('#plz', main); if (pz) pz.onclick = () => plazos(cargar);
+    main.querySelectorAll('[data-c]').forEach(c => c.onchange = () => { const k = c.dataset.c; F[k] = [...main.querySelectorAll(`[data-c="${k}"]:checked`)].map(x => x.value); re(); });
+    const rf = $('#rf', main);
+    if (rf) rf.onchange = () => {
+      const v = rf.value; delete F.desde; delete F.hasta; F.rapido = v || undefined;
+      if (v === '7') { const d = new Date(); d.setDate(d.getDate() - 6); F.desde = iso(d); F.hasta = iso(hoy); }
+      if (v === 'mes') { F.desde = iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)); F.hasta = iso(hoy); }
+      if (v === 'dia') { F.desde = F.hasta = iso(hoy); }
+      re();
+    };
+    const fd = $('#fd', main), fh = $('#fh', main);
+    if (fd) fd.onchange = () => { F.desde = fd.value || undefined; if (F.rapido === 'dia') F.hasta = fd.value || undefined; re(); };
+    if (fh) fh.onchange = () => { F.hasta = fh.value || undefined; re(); };
+    const lf = $('#lf', main); if (lf) lf.onclick = () => { F = {}; re(); };
+    main.querySelectorAll('.rp-row').forEach(tr => tr.onclick = () => trazabilidad(+tr.dataset.m, tr.dataset.l));
+    if (sel) trazabilidad(sel, (main.querySelector(`.rp-row[data-m="${sel}"]`) || {}).dataset?.l || '');
+  };
+  const trazabilidad = async (id, local) => {
+    sel = id;
+    main.querySelectorAll('.rp-row').forEach(tr => tr.classList.toggle('sel', +tr.dataset.m === id));
+    const box = $('#tz', main); if (!box) return;
+    box.innerHTML = '<div class="card"><p class="muted">Cargando trazabilidad…</p></div>';
+    try {
+      const b = await api(`/api/minutas/${id}/bitacora`);
+      const ev = b.eventos || [];
+      box.innerHTML = `<div class="card"><h2>Trazabilidad · ${esc(local)}</h2>${ev.length ? ev.map(e => `<div class="pn-ac"><span class="tiny">${esc(e.ts || e.fecha || '')}</span><span><b>${esc(e.usuario || e.usuarioNombre || '')}</b> ${esc(e.accion || '')}</span></div>`).join('') : '<div class="empty">Sin movimientos registrados.</div>'}<p class="tiny" style="margin-top:8px">${b.creadaPor ? `Creada por ${esc(b.creadaPor)} el ${esc(b.creadaEn || '')}` : ''}${b.estado ? ` · Estado actual: ${esc(b.estado)}` : ''}</p></div>`;
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) { box.innerHTML = `<div class="card"><p class="muted">${esc(errTxt(e))}</p></div>`; }
   };
   await cargar();
 };
@@ -518,7 +632,7 @@ const Cola = {
   },
 };
 const resumenFotos = (n, r) => `${r.ok} de ${n} foto${n === 1 ? '' : 's'} subida${r.ok === 1 ? '' : 's'} a la minuta.${r.cola ? ` ${r.cola} quedó${r.cola === 1 ? '' : 'n'} esperando en este navegador y se subirá${r.cola === 1 ? '' : 'n'} sola${r.cola === 1 ? '' : 's'} al volver la conexión (no borres los datos del navegador).` : ''}${r.error ? ` ${r.error} no se pudo subir: súbela desde la minuta en la app.` : ''}`;
-const CHAT = { msgs: [], estado: {}, reporte: null, ctx: '', tipos: [], fotos: [], pend: [], nuevaVisita: false, sop: null };
+const CHAT = { msgs: [], estado: {}, reporte: null, ctx: '', tipos: [], fotos: [], pend: [], nuevaVisita: false, sop: null, pre: null };
 const SOP_PISTA = { cliente: 'Cliente o local', motivo: 'Motivo de la visita', evid: 'Nombres de las fotos, separados por coma', hecho: 'Lo realizado en este punto' };
 const SOP_REGLAS = { S1: 'Un solo sistema de impresiones activo', S2: 'IP fijas y sin conflictos', S3: 'Respaldo de cada impresora', S4: 'Lugares de preparación con su impresora asignada' };
 const SOP_MARCA = { ok: '✓ Cumple', bad: '✗ No cumple', na: '— No aplica' };
@@ -733,6 +847,7 @@ V.asistente = async main => {
     } catch (e) { toast(errTxt(e)); }
   };
   pintar();
+  if (CHAT.pre) { const t = CHAT.pre; CHAT.pre = null; enviar(t); }
 };
 
 
