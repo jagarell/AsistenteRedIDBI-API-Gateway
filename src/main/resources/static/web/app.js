@@ -652,18 +652,53 @@ async function verMapa(eid) {
 }
 
 /* ---------- Análisis IA de una evaluación ---------- */
-async function verAnalisis(eid) {
+async function verAnalisis(eid, prop) {
   let a;
   try { a = await api(`/api/evaluations/${eid}/analysis`); } catch (e) { toast(errTxt(e)); return; }
   const tono = c => ({ green: 'ok', blue: 'info', orange: 'warn', red: 'err', yellow: 'warn' }[c] || '');
   const barra = v => `<div class="prog" style="min-width:90px"><i style="width:${Math.round((v || 0) * 100)}%;${v < 0.5 ? 'background:#D32F2F' : v < 0.8 ? 'background:#F57C00' : ''}"></i></div>`;
-  dialogo(`<div class="row" style="padding:0 4px 10px"><b class="sp">Análisis IA</b><button class="btn sm" data-x>Cerrar</button></div>
+  const dv = dialogo(`<div class="row" style="padding:0 4px 10px"><b class="sp">Análisis IA</b><button class="btn sm" data-x>Cerrar</button></div>
     <div style="flex:1;overflow:auto;padding:0 4px">
       <div class="grid g3"><div class="card kpi ${a.globalScore >= 80 ? 'ok' : a.globalScore >= 60 ? 'warn' : 'err'}"><span>Puntaje general</span><b>${esc(a.globalScore)} %</b><small>de la visita</small></div><div class="card kpi"><span>Áreas evaluadas</span><b>${esc(a.evaluatedAreas)}</b><small>del local</small></div><div class="card kpi ${a.attentionRequired ? 'err' : 'ok'}"><span>Requieren atención</span><b>${esc(a.attentionRequired)}</b><small>${a.attentionRequired ? 'revisa los criterios en rojo' : 'todo en orden'}</small></div></div>
+      ${(a.summary || (a.asIsFindings || []).length || (a.recommendations || []).length) ? `<div class="card" style="margin-top:14px"><div class="row"><h2 style="margin:0" class="sp">Propuesta técnica</h2><button class="btn sm fill" id="aprop">PDF y envío</button></div>
+        ${a.summary ? `<p style="margin:10px 0">${esc(a.summary)}</p>` : ''}
+        ${(a.asIsFindings || []).length ? `<h3 style="font-size:15px;margin:12px 0 4px">Cómo está hoy (AS-IS)</h3><ul class="lista">${a.asIsFindings.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+        ${(a.recommendations || []).length ? `<h3 style="font-size:15px;margin:12px 0 4px">Qué se recomienda (TO-BE)</h3><ul class="lista">${a.recommendations.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+        ${prop && (prop.equipment || []).length ? `<h3 style="font-size:15px;margin:12px 0 4px">Equipos recomendados</h3><div class="tw"><table><thead><tr><th>Equipo</th><th>Cant.</th><th>Precio</th></tr></thead><tbody>${prop.equipment.map(q => `<tr><td><b>${esc(q.name)}</b><div class="tiny muted">${esc(q.description || '')}</div></td><td>${esc(q.quantity ?? 1)}</td><td class="muted">${q.unitPrice == null ? 'Por cotizar' : 'S/ ' + esc(q.unitPrice)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>` : ''}
       ${(a.results || []).map(r => `<div class="card" style="margin-top:14px"><div class="row"><h2 style="margin:0" class="sp">${esc(r.title)}</h2><span class="chip ${tono(r.color)}">${esc(r.status)}</span><b>${r.score == null ? '—' : esc(r.score) + ' %'}</b></div>
         <p class="muted" style="margin:8px 0">${esc(r.description)}</p>
         <div class="tw"><table><thead><tr><th>Criterio</th><th>Peso</th><th>Cumple</th><th>Detalle</th></tr></thead><tbody>${(r.criteria || []).map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.weight)}</td><td>${c.compliance == null ? '<span class="chip">N/A</span>' : `<div class="row" style="flex-wrap:nowrap">${barra(c.compliance)}<span class="tiny" style="white-space:nowrap">${Math.round(c.compliance * 100)} %</span></div>`}</td><td class="muted">${esc(c.detail)}</td></tr>`).join('')}</tbody></table></div></div>`).join('')}
     </div>`, true);
+  const bp = $('#aprop', dv.el); if (bp) bp.onclick = () => propuestaPdf(a, prop);
+}
+
+/* Propuesta técnica: descargar el PDF o enviarlo por correo (el servidor lo arma al momento, no lo guarda) */
+function propuestaPdf(a, prop) {
+  const cuerpo = () => ({ establishmentName: $('#pl', d.el).value.trim(), address: $('#pd', d.el).value.trim(), technicianName: (S.user && S.user.nombre) || '', score: a.globalScore, summary: a.summary || '', asIsFindings: a.asIsFindings || [], recommendations: a.recommendations || [],
+    equipment: ((prop && prop.equipment) || []).map(q => ({ name: q.name, description: q.description || '', quantity: q.quantity || 1, unitPrice: q.unitPrice ?? null })), topologyText: (prop && prop.topologyText) || '' });
+  const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Propuesta técnica</h2><p class="muted" style="margin-bottom:10px">El PDF se arma con el análisis de esta evaluación. Los equipos salen «por cotizar» porque aún no hay catálogo de precios.</p>
+    <label class="f" for="pl">Nombre del local</label><input type="text" id="pl" maxlength="150"><label class="f" for="pd">Dirección</label><input type="text" id="pd" maxlength="200">
+    <div class="row" style="margin-top:12px"><button class="btn" id="pdesc">Descargar PDF</button></div>
+    <h3 style="font-size:15px;margin:14px 0 4px">Enviar por correo</h3>
+    <label class="f" for="pt">Para</label><input type="email" id="pt" placeholder="cliente@empresa.com"><label class="f" for="pc">Con copia (opcional)</label><input type="email" id="pc">
+    <label class="f" for="ps">Asunto</label><input type="text" id="ps" value="Propuesta técnica de red"><label class="f" for="pm">Mensaje</label><textarea id="pm" rows="3">Adjuntamos la propuesta técnica de red para su revisión.</textarea>
+    <div class="err-t" id="pe" style="display:none;margin-top:8px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-x>Cerrar</button><button class="btn fill" id="penv">Enviar propuesta</button></div>`);
+  const err = t => { const e = $('#pe', d.el); e.textContent = t; e.style.display = t ? 'block' : 'none'; };
+  $('#pdesc', d.el).onclick = async () => {
+    if (!cuerpo().establishmentName) { err('Escribe el nombre del local.'); return; } err('');
+    try { const r = await api('/api/proposals/pdf', { method: 'POST', body: cuerpo(), raw: true }); const u = URL.createObjectURL(await r.blob()); const l = document.createElement('a'); l.href = u; l.download = 'propuesta.pdf'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+    catch (e) { err(errTxt(e)); }
+  };
+  $('#penv', d.el).onclick = async () => {
+    const to = $('#pt', d.el).value.trim(), asunto = $('#ps', d.el).value.trim(), msg = $('#pm', d.el).value.trim();
+    if (!cuerpo().establishmentName) { err('Escribe el nombre del local.'); return; }
+    if (!/^\S+@\S+\.\S+$/.test(to)) { err('Escribe un correo de destino válido.'); return; }
+    if (!asunto || !msg) { err('El asunto y el mensaje son obligatorios.'); return; } err('');
+    const b = $('#penv', d.el); b.disabled = true; b.textContent = 'Enviando…';
+    try { await api('/api/proposals/send', { method: 'POST', body: { to, cc: $('#pc', d.el).value.trim() || null, subject: asunto, message: msg, proposal: cuerpo() } }); d.close(); toast('Propuesta enviada a ' + to + '.'); }
+    catch (e) { err(errTxt(e)); b.disabled = false; b.textContent = 'Enviar propuesta'; }
+  };
 }
 
 /* ---------- Chat IA (evaluación guiada) ---------- */
@@ -818,7 +853,7 @@ V.chat = async main => {
     $('#nv', main).onclick = async () => { try { await nuevaEv(); pintar(); } catch (e) { toast(errTxt(e)); } };
     const pdf = $('#pdf', main); if (pdf) pdf.onclick = () => verMinuta(CH.eid, CH.eid);
     const mp = $('#mapa', main); if (mp) mp.onclick = () => verMapa(CH.eid);
-    const an = $('#anal', main); if (an) an.onclick = () => verAnalisis(CH.eid);
+    const an = $('#anal', main); if (an) an.onclick = () => verAnalisis(CH.eid, CH.resp && CH.resp.proposal);
     main.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editar(b.dataset.edit));
     if (!n || CH.busy || CH.done) return;
     const q = (s, f) => { const e = $(s, main); if (e) e.onclick = f; };
