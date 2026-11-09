@@ -89,12 +89,12 @@ const errTxt = e => (e && e.message) || 'Ocurrió un error. Intenta de nuevo.';
 
 /* ---------- menú por rol (docs §39) ---------- */
 const MENU = {
-  ADMINISTRADOR: [['inicio', 'Inicio', 'inicio'], ['panel', 'Panel', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'],
+  ADMINISTRADOR: [['inicio', 'Inicio', 'inicio'], ['panel', 'Panel', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'],
     ['preguntas', 'Preguntas y reglas', 'preg'], ['equipo', 'Equipo y accesos', 'team'], ['plan', 'Plan de la empresa', 'plan'], ['cuenta', 'Mi perfil y configuración', 'user']],
-  SUPERVISOR: [['panel', 'Panel · mi equipo', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['cuenta', 'Mi perfil y configuración', 'user']],
-  TECNICO: [['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['cuenta', 'Mi perfil y configuración', 'user']],
+  SUPERVISOR: [['panel', 'Panel · mi equipo', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'], ['cuenta', 'Mi perfil y configuración', 'user']],
+  TECNICO: [['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['asistente', 'Asistente IA', 'sparkle'], ['cuenta', 'Mi perfil y configuración', 'user']],
 };
-const TITULO = { inicio: 'Inicio', panel: 'Panel', notificaciones: 'Notificaciones', reportes: 'Reportes', equipo: 'Equipo y accesos', cuenta: 'Mi perfil y configuración', preguntas: 'Preguntas y reglas', plan: 'Plan de la empresa' };
+const TITULO = { asistente: 'Asistente IA', inicio: 'Inicio', panel: 'Panel', notificaciones: 'Notificaciones', reportes: 'Reportes', equipo: 'Equipo y accesos', cuenta: 'Mi perfil y configuración', preguntas: 'Preguntas y reglas', plan: 'Plan de la empresa' };
 
 /* ---------- pantallas ---------- */
 const V = {};
@@ -139,7 +139,7 @@ V.inicio = async main => {
     <div class="grid g3">${ind.indicadores.map(k => `<div class="card kpi ${tono[k.clave] || ''}" data-go="${k.clave === 'por_validar' ? 'notificaciones' : 'reportes'}"><span>${esc(k.label)}</span><b>${k.cantidad}</b><small>${esc(sub(k))}</small></div>`).join('')}</div>
     <div class="card"><div class="row"><h2 style="margin:0">Recientes</h2><span class="sp"></span><a href="#/reportes">Ver todo</a></div>${tablaMinutas((rep.minutas || []).slice(0, 8))}</div>
     <div class="grid g2"><div class="card"><h2>Nueva evaluación</h2><p class="muted">Las evaluaciones con el Chat IA se hacen desde la app del celular.</p></div>
-    <div class="card"><h2>Asistente IA</h2><p class="muted">Redacta o actualiza minutas y da reportes desde la app. En la web llegará en una próxima entrega.</p></div></div>
+    <div class="card" style="cursor:pointer" data-go="asistente"><h2>Asistente IA</h2><p class="muted">Pide reportes, minutas por validar o pendientes. Redactar y actualizar minutas con fotos se hace en la app.</p></div></div>
   </div>`;
   main.querySelectorAll('[data-go]').forEach(e => e.onclick = () => { location.hash = '#/' + e.dataset.go; });
 };
@@ -288,14 +288,24 @@ V.equipo = async main => {
 };
 
 V.cuenta = async main => {
-  const p = await api('/api/profile/me');
+  const [p, emp] = await Promise.all([api('/api/profile/me'), S.user.rol === 'ADMINISTRADOR' ? api('/api/empresa') : Promise.resolve(null)]);
   const oscuro = document.documentElement.dataset.theme === 'dark';
   main.innerHTML = `<div class="page">
     <div class="card"><div class="row"><span class="av" style="width:56px;height:56px;font-size:20px">${esc(iniciales(p.fullName))}</span><div><h2 style="margin:0;font-size:20px">${esc(p.fullName)}</h2><p class="muted">${esc(ROL[p.role] || p.role)} · ${esc(p.company || '')}</p></div></div>
       <div class="grid g2" style="margin-top:16px"><div><label class="f">Correo</label><div>${esc(p.email)}</div></div><div><label class="f">Teléfono</label><div>${esc(p.phone || '—')}</div></div><div><label class="f">Ciudad</label><div>${esc(p.city || '—')}</div></div><div><label class="f">Evaluaciones</label><div>${p.totalEvaluations ?? 0}</div></div></div></div>
+    ${emp ? `<div class="card"><h2>Empresa</h2><div class="row" style="align-items:flex-end"><div style="flex:1;min-width:220px"><label class="f" for="en">Nombre de la empresa</label><input type="text" id="en" value="${esc(emp.nombre)}" maxlength="150"></div><button class="btn" id="gn">Guardar nombre</button></div>
+      <div class="row" style="margin-top:16px"><div style="width:64px;height:64px;border:1px solid var(--bd);border-radius:12px;display:grid;place-items:center;overflow:hidden;background:var(--s2)">${emp.logo ? `<img alt="Logo" src="${esc(emp.logo)}" style="max-width:100%;max-height:100%">` : '<span class="tiny">Sin logo</span>'}</div>
+      <div><label class="btn" for="lg" style="display:inline-block">Subir logo</label><input type="file" id="lg" accept="image/png,image/jpeg" class="sr"><p class="tiny" style="margin-top:6px">PNG o JPG de hasta 2 MB.</p></div></div></div>` : ''}
     <div class="card"><h2>Apariencia</h2><label class="row" style="cursor:pointer"><input type="checkbox" id="noche" ${oscuro ? 'checked' : ''}> Modo noche</label></div>
     <div class="card"><h2>Sesión</h2><button class="btn danger" id="salir">Cerrar sesión</button></div>
   </div>`;
+  const gn = $('#gn'); if (gn) gn.onclick = async () => { try { await api('/api/empresa', { method: 'PUT', body: { nombre: $('#en').value.trim() } }); toast('Nombre guardado.'); } catch (e) { toast(errTxt(e)); } };
+  const lg = $('#lg'); if (lg) lg.onchange = async () => {
+    const f = lg.files[0]; if (!f) return;
+    if (f.size > 2 * 1024 * 1024) { toast('El logo debe pesar hasta 2 MB.'); return; }
+    const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+    try { await api('/api/empresa/logo', { method: 'PUT', body: { base64: url, mime: f.type } }); toast('Logo actualizado.'); await V.cuenta(main); } catch (e) { toast(errTxt(e)); }
+  };
   $('#noche').onchange = e => { const d = e.target.checked; document.documentElement.dataset.theme = d ? 'dark' : 'light'; store.set('na.theme', d ? 'dark' : 'light'); };
   $('#salir').onclick = () => cerrar(false);
 };
@@ -445,6 +455,58 @@ function permisos(rol, despues) {
     } catch (e) { const x = $('#pe', d.el); x.textContent = errTxt(e); x.style.display = 'block'; }
   };
 }
+
+
+/* ---------- Asistente IA (consultas y reportes) ---------- */
+const CHAT = { msgs: [], estado: {}, reporte: null };
+
+V.asistente = async main => {
+  const SUG = ['Reportes', 'Minutas por validar', 'Mis pendientes de hoy', 'Reporte del mes'];
+  const bloque = b => {
+    const tabla = b.tabla ? `<div class="tw" style="margin-top:8px"><table><thead><tr>${b.tabla.columnas.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${b.tabla.filas.map(f => `<tr>${f.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
+    const acc = (b.acciones || []).length ? `<div class="row" style="margin-top:10px">${b.acciones.map((a, i) => `<button class="btn sm ${a.principal ? 'fill' : ''}" data-a='${esc(JSON.stringify(a))}'>${esc(a.label)}</button>`).join('')}</div>` : '';
+    return `<div>${b.titulo ? `<b>${esc(b.titulo)}</b>` : ''}${b.texto ? `<p style="white-space:pre-wrap">${esc(b.texto)}</p>` : ''}${tabla}${acc}</div>`;
+  };
+  const pintar = () => {
+    main.innerHTML = `<div class="page" style="display:flex;flex-direction:column;min-height:calc(100vh - 110px)">
+      <div id="msgs" style="flex:1">${CHAT.msgs.length ? CHAT.msgs.map(m => m.yo
+        ? `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><div class="card" style="background:var(--pri);color:#fff;border-color:var(--pri);max-width:70%;padding:10px 14px">${esc(m.texto)}</div></div>`
+        : `<div style="margin-bottom:10px"><div class="card" style="max-width:92%;padding:12px 16px">${m.bloques.map(bloque).join('<hr style="border:0;border-top:1px solid var(--bd);margin:10px 0">')}</div></div>`).join('')
+        : `<div class="card"><h2>¿En qué te ayudo?</h2><p class="muted">Pídeme reportes de minutas, las que están por validar o tus pendientes de hoy. Respeto lo que tu rol puede ver.</p><div class="row" style="margin-top:12px">${SUG.map(x => `<button class="tab" data-s="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`}</div>
+      <form id="f" class="row" style="position:sticky;bottom:0;background:var(--bg);padding:10px 0"><input type="text" id="t" placeholder="Escribe tu pedido" autocomplete="off" style="flex:1"><button class="btn fill" id="go">Enviar</button></form></div>`;
+    window.scrollTo(0, document.body.scrollHeight);
+    main.querySelectorAll('[data-s]').forEach(b => b.onclick = () => enviar(b.dataset.s));
+    main.querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(JSON.parse(b.dataset.a)));
+    $('#f', main).onsubmit = e => { e.preventDefault(); const t = $('#t', main).value.trim(); if (t) enviar(t); };
+    const t = $('#t', main); if (t) t.focus();
+  };
+  const enviar = async (texto, extra) => {
+    CHAT.msgs.push({ yo: true, texto }); pintar();
+    const body = { texto, ...CHAT.estado, ...(CHAT.reporte ? { reporte: CHAT.reporte } : {}), ...(extra || {}) };
+    try {
+      const r = await api('/api/asistente/mensaje', { method: 'POST', body });
+      CHAT.estado = r.estado || {};
+      const rep = (r.bloques || []).find(b => b.consulta);
+      CHAT.reporte = rep ? rep.consulta : null;
+      CHAT.msgs.push({ yo: false, bloques: r.bloques || [{ texto: r.texto }] });
+    } catch (e) { CHAT.msgs.push({ yo: false, bloques: [{ texto: 'No pude responder: ' + errTxt(e) }] }); }
+    pintar();
+  };
+  const accion = async a => {
+    try {
+      if (a.id === 'descargar_reporte') {
+        const r = await api('/api/asistente/reporte.xlsx', { method: 'POST', body: a.datos.consulta, raw: true });
+        const u = URL.createObjectURL(await r.blob()); const l = document.createElement('a'); l.href = u; l.download = 'reporte-minutas.xlsx'; l.click(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+      } else if (a.id === 'ver_reportes') location.hash = '#/reportes';
+      else if (a.id === 'abrir_preguntas') location.hash = '#/preguntas';
+      else if (a.id === 'texto') enviar((a.datos && a.datos.texto) || a.label);
+      else if (a.id === 'sugerir') { await api('/api/asistente/sugerencia', { method: 'POST', body: { texto: a.datos.texto } }); toast('Sugerencia enviada al administrador.'); }
+      else if (a.id === 'cancelar_programado') { await api(`/api/asistente/programados/${a.datos.id}/cancelar`, { method: 'POST', body: {} }); toast('Envío cancelado.'); }
+      else toast('Redactar y actualizar minutas con fotos se hace desde la app por ahora.');
+    } catch (e) { toast(errTxt(e)); }
+  };
+  pintar();
+};
 
 /* ---------- Plan de la empresa ---------- */
 V.plan = async main => {
