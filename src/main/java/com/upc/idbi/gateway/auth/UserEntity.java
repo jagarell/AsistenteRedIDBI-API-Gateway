@@ -60,6 +60,10 @@ public class UserEntity {
     @Column(name = "fcm_token", length = 255)
     private String fcmToken;
 
+    /** Cuándo el administrador le quitó el acceso (Equipo y accesos). Null = tiene acceso. Se conservan sus datos y minutas. */
+    @Column(name = "access_removed_at")
+    private LocalDateTime accessRemovedAt;
+
     /** Supervisor a cargo del técnico (Reportes › Mis técnicos). */
     @Column(name = "supervisor_id")
     private Long supervisorId;

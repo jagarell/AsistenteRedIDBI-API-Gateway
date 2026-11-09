@@ -1,5 +1,6 @@
 package com.upc.idbi.gateway.equipo;
 
+import com.upc.idbi.gateway.auth.RefreshTokenRepository;
 import com.upc.idbi.gateway.auth.Role;
 import com.upc.idbi.gateway.auth.UserEntity;
 import com.upc.idbi.gateway.auth.UserRepository;
@@ -10,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.*;
@@ -26,6 +28,7 @@ public class EquipoController {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenRepository refreshTokens;
 
     @GetMapping
     public List<Map<String, Object>> lista() {
@@ -44,6 +47,7 @@ public class EquipoController {
                     UserEntity s = u.getSupervisorId() == null ? null : porId.get(u.getSupervisorId());
                     m.put("supervisorNombre", s == null ? null : s.getFullName());
                     m.put("tecnicosACargo", todos.stream().filter(t -> u.getId().equals(t.getSupervisorId())).count());
+                    m.put("conAcceso", u.getAccessRemovedAt() == null);
                     m.put("pidioCodigo", u.getResetCode() != null && u.getResetCodeExpiresAt() != null
                             && u.getResetCodeExpiresAt().isAfter(java.time.LocalDateTime.now()));
                     return m;
@@ -125,6 +129,21 @@ public class EquipoController {
         u.setSupervisorId(sid);
         users.save(u);
         return Map.of("id", u.getId(), "supervisorId", sid == null ? "" : sid);
+    }
+
+    /** Quitar o devolver el acceso: la persona no puede iniciar sesión ni renovarla; sus datos y minutas se conservan. */
+    @PutMapping("/{id}/acceso")
+    @Transactional
+    public Map<String, Object> acceso(@PathVariable Long id, @RequestBody Map<String, Object> body, @AuthenticationPrincipal AuthenticatedUser me) {
+        UserEntity u = find(id);
+        boolean conAcceso = Boolean.parseBoolean(String.valueOf(body.get("conAcceso")));
+        if (!conAcceso && u.getId().equals(me.id())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No puedes quitarte tu propio acceso.");
+        }
+        u.setAccessRemovedAt(conAcceso ? null : java.time.LocalDateTime.now());
+        if (!conAcceso) refreshTokens.deleteByUser(u);   // cierra sus sesiones: no podrá renovar
+        users.save(u);
+        return Map.of("id", u.getId(), "conAcceso", conAcceso);
     }
 
     private UserEntity find(Long id) {
