@@ -51,6 +51,12 @@ public class ChatController {
     }
 
     /** Adjunto del cliente en el Chat IA (ficha RUC, comprobante, recibo, tarjeta, letrero): devuelve lo leído para revisar. */
+    /** Fotos de evidencia de la evaluación (una por código y alcance, la más reciente) para colocarlas en el mapa. */
+    @GetMapping("/evidences")
+    public List<java.util.Map<String, Object>> evidences(@PathVariable Long evaluationId) {
+        return chatService.listarEvidencias(evaluationId);
+    }
+
     @PostMapping(value = "/adjunto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public java.util.Map<String, Object> adjunto(
             @PathVariable Long evaluationId,
