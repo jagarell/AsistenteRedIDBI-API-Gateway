@@ -529,24 +529,60 @@ function dictar(btn, input) {
   try { r.start(); } catch (e) { fin(); }
 }
 
-/* ---------- mapa de red (solo lectura) ---------- */
+/* ---------- mapa de red (editor) ---------- */
 async function verMapa(eid) {
   let m;
-  try { m = (await api(`/api/evaluations/${eid}/map/generate`, { method: 'POST', body: {} })); m = m.map || m; } catch (e) { toast(errTxt(e)); return; }
-  const W = 1000, H = m.canvasH || 800, bw = 150, bh = 56, byId = Object.fromEntries((m.nodes || []).map(n => [n.id, n]));
-  const pos = n => ({ x: n.x * W, y: n.y * H });
+  try { const g = await api(`/api/evaluations/${eid}/map`); m = g && g.map; if (!m) { const r = await api(`/api/evaluations/${eid}/map/generate`, { method: 'POST', body: {} }); m = r.map || r; } } catch (e) { toast(errTxt(e)); return; }
+  const W = 1000, bw = 150, bh = 56;
+  let sel = null, dirty = false, nuevoId = 0;
+  const H = () => m.canvasH || 800;
   const col = n => n.status === 'broken' ? 'var(--err)' : n.pending ? '#F57C00' : 'var(--pri)';
-  const links = (m.links || []).map(l => { const a = byId[l.source], b = byId[l.target]; if (!a || !b) return ''; const p = pos(a), q = pos(b);
-    const c = l.observed ? 'var(--err)' : l.color || (l.style === 'wifi' ? '#7E57C2' : 'var(--pri)');
-    return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${c}" stroke-width="${l.style === 'main' ? 4 : 2.5}" ${l.style === 'wifi' ? 'stroke-dasharray="7 6"' : ''}/>`; }).join('');
-  const nodes = (m.nodes || []).map(n => { const p = pos(n); const c = col(n);
-    return `<g><rect x="${p.x - bw / 2}" y="${p.y - bh / 2}" width="${bw}" height="${bh}" rx="12" fill="var(--s1)" stroke="${c}" stroke-width="2.5" ${n.pending ? 'stroke-dasharray="6 4"' : ''}/>
-      <text x="${p.x}" y="${p.y - 4}" text-anchor="middle" font-size="14" font-weight="700" fill="var(--tx)">${esc(String(n.label).slice(0, 20))}</text>
-      <text x="${p.x}" y="${p.y + 14}" text-anchor="middle" font-size="11" fill="var(--tx2)">${esc(String(n.ip || n.detail || n.location || (n.pending ? 'Por implementar' : '')).slice(0, 24))}</text></g>`; }).join('');
-  dialogo(`<div class="row" style="padding:0 4px 10px"><b class="sp">Mapa de red</b><span class="tiny">Línea punteada naranja = por implementar · violeta punteada = WiFi · roja = observada</span><button class="btn sm" data-x>Cerrar</button></div>
-    <div style="flex:1;overflow:auto;background:var(--s2);border-radius:10px"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:760px;height:auto" role="img" aria-label="Topología de red">${links}${nodes}</svg></div>`, true);
+  const d = dialogo(`<div class="row" style="padding:0 4px 8px"><b>Mapa de red</b><span class="chip warn" id="mdirty" style="display:none">Cambios sin guardar</span><span class="sp"></span><button class="btn sm" id="mdel" disabled>Eliminar equipo</button><button class="btn sm fill" id="msave" disabled>Guardar mapa</button><button class="btn sm" id="mclose">Cerrar</button></div>
+    <div class="tiny" style="padding:0 4px 8px">Arrastra los equipos para ordenarlos · toca uno para seleccionarlo · naranja punteado = por implementar · violeta punteada = WiFi · roja = observada</div>
+    <div style="flex:1;overflow:auto;background:var(--s2);border-radius:10px"><svg id="msvg" style="width:100%;min-width:760px;height:auto;touch-action:none" role="img" aria-label="Topología de red"></svg></div>
+    <form id="mcmd" class="row" style="padding:10px 4px 0"><input type="text" id="mtxt" placeholder="Pide un cambio al mapa… (ej.: agrega un switch junto al router)" style="flex:1" autocomplete="off">${micBtn('mmic')}<button class="btn fill">Aplicar</button></form><div id="mrep" class="tiny" style="padding:6px 4px 0"></div>`, true);
+  const el = s => $(s, d.el);
+  const marcar = v => { dirty = v; el('#mdirty').style.display = v ? '' : 'none'; el('#msave').disabled = !v; el('#mclose').textContent = v ? 'Descartar y cerrar' : 'Cerrar'; };
+  const dibujar = () => {
+    const byId = Object.fromEntries((m.nodes || []).map(n => [n.id, n])), h = H();
+    const svg = el('#msvg'); svg.setAttribute('viewBox', `0 0 ${W} ${h}`);
+    const pos = n => ({ x: n.x * W, y: n.y * h });
+    const links = (m.links || []).map(l => { const a = byId[l.source], b = byId[l.target]; if (!a || !b) return ''; const p = pos(a), q = pos(b);
+      const c = l.observed ? 'var(--err)' : l.color || (l.style === 'wifi' ? '#7E57C2' : 'var(--pri)');
+      return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" stroke="${c}" stroke-width="${l.style === 'main' ? 4 : 2.5}" ${l.style === 'wifi' ? 'stroke-dasharray="7 6"' : ''}/>`; }).join('');
+    const nodes = (m.nodes || []).map(n => { const p = pos(n), c = col(n), on = n.id === sel;
+      return `<g data-n="${esc(n.id)}" style="cursor:grab"><rect x="${p.x - bw / 2}" y="${p.y - bh / 2}" width="${bw}" height="${bh}" rx="12" fill="var(--s1)" stroke="${on ? 'var(--tx)' : c}" stroke-width="${on ? 4 : 2.5}" ${n.pending ? 'stroke-dasharray="6 4"' : ''}/>
+        <text x="${p.x}" y="${p.y - 4}" text-anchor="middle" font-size="14" font-weight="700" fill="var(--tx)" pointer-events="none">${esc(String(n.label).slice(0, 20))}</text>
+        <text x="${p.x}" y="${p.y + 14}" text-anchor="middle" font-size="11" fill="var(--tx2)" pointer-events="none">${esc(String(n.ip || n.detail || n.location || (n.pending ? 'Por implementar' : '')).slice(0, 24))}</text></g>`; }).join('');
+    svg.innerHTML = links + nodes;
+    el('#mdel').disabled = !sel;
+  };
+  const aSvg = (svg, e) => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); };
+  const svg = el('#msvg');
+  svg.addEventListener('pointerdown', e => {
+    const g = e.target.closest('[data-n]'); if (!g) { sel = null; dibujar(); return; }
+    const n = m.nodes.find(x => x.id === g.dataset.n); sel = n.id; dibujar();
+    const h = H(), p0 = aSvg(svg, e), ox = n.x * W - p0.x, oy = n.y * h - p0.y; let movido = false;
+    const mover = ev => { const p = aSvg(svg, ev); n.x = Math.min(0.95, Math.max(0.05, (p.x + ox) / W)); n.y = Math.min(0.97, Math.max(0.03, (p.y + oy) / h)); movido = true; dibujar(); };
+    const soltar = () => { removeEventListener('pointermove', mover); removeEventListener('pointerup', soltar); if (movido) marcar(true); };
+    addEventListener('pointermove', mover); addEventListener('pointerup', soltar);
+  });
+  el('#mdel').onclick = () => {
+    if (!sel) return; const n = m.nodes.find(x => x.id === sel);
+    if (n && n.type === 'internet') { toast('El nodo de Internet no se elimina.'); return; }
+    m.nodes = m.nodes.filter(x => x.id !== sel); m.links = (m.links || []).filter(l => l.source !== sel && l.target !== sel); sel = null; marcar(true); dibujar();
+  };
+  el('#msave').onclick = async () => { try { await api(`/api/evaluations/${eid}/map`, { method: 'PUT', body: m }); marcar(false); toast('Mapa guardado.'); } catch (e) { toast(errTxt(e)); } };
+  el('#mclose').onclick = () => d.close();
+  el('#mcmd').onsubmit = async e => {
+    e.preventDefault(); const t = el('#mtxt').value.trim(); if (!t) return;
+    el('#mrep').textContent = 'Aplicando…';
+    try { const r = await api(`/api/evaluations/${eid}/map/command`, { method: 'POST', body: { map: m, command: t } }); m = r.map; sel = null; el('#mtxt').value = ''; el('#mrep').textContent = r.reply || 'Listo.'; marcar(true); dibujar(); }
+    catch (er) { el('#mrep').textContent = errTxt(er); }
+  };
+  const mc = el('#mmic'); if (mc) mc.onclick = () => dictar(mc, el('#mtxt'));
+  dibujar();
 }
-
 
 /* ---------- Análisis IA de una evaluación ---------- */
 async function verAnalisis(eid) {
