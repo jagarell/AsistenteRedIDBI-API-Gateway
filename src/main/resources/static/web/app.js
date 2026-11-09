@@ -366,61 +366,126 @@ async function verMinuta(id, ev) {
 
 V.equipo = async main => {
   if (S.user.rol !== 'ADMINISTRADOR') { main.innerHTML = '<div class="page"><div class="empty">Solo el administrador ve Equipo y accesos.</div></div>'; return; }
-  let tab = 'personas';
+  const E = { tab: 'personas', q: '', filtro: 'todos', vista: 'lista', sel: null };
+  const DESC = { ADMINISTRADOR: 'Ve y administra todo en la empresa.', SUPERVISOR: 'Valida las minutas de los técnicos que tiene asignados.', TECNICO: 'Hace las visitas y envía sus minutas a su supervisor.' };
   const cargar = async () => {
     const [pers, roles, cods] = await Promise.all([api('/api/equipo'), api('/api/roles'), api('/api/recuperaciones').catch(() => [])]);
     const sups = pers.filter(p => p.rol === 'SUPERVISOR');
+    const porRol = r => r.kind === 'propio' ? 0 : pers.filter(p => ROL[p.rol] === r.name).length;
+    const cuenta = { todos: pers.length, TECNICO: pers.filter(p => p.rol === 'TECNICO').length, SUPERVISOR: sups.length, sin: pers.filter(p => p.conAcceso === false).length };
+    const q = E.q.trim().toLowerCase();
+    const vis = pers.filter(p => (E.filtro === 'todos' || (E.filtro === 'sin' ? p.conAcceso === false : p.rol === E.filtro)) && (!q || (p.nombre + ' ' + p.email).toLowerCase().includes(q)));
+    const sel = pers.find(p => p.id === E.sel) || null;
+    const chipAcc = p => p.conAcceso === false ? '<span class="chip">Sin acceso</span>' : '<span class="chip ok">Activo</span>';
+    const nombre = p => `<div class="row"><span class="av sm">${esc(iniciales(p.nombre))}</span><div><b>${esc(p.nombre)}</b>${p.pidioCodigo ? ' <span class="chip warn">Pidió código</span>' : ''}<div class="tiny">${esc(p.email)}</div></div></div>`;
+    const filas = vis.map(p => `<tr class="eq-r ${p.id === E.sel ? 'on' : ''} ${p.conAcceso === false ? 'off' : ''}" data-ficha="${p.id}"><td>${nombre(p)}</td><td>${esc(ROL[p.rol] || p.rol)}</td>
+      <td>${p.rol === 'TECNICO' ? (p.supervisorNombre ? esc(p.supervisorNombre) : '<span class="chip warn">Sin asignar</span>') : '<span class="tiny">—</span>'}</td><td>${chipAcc(p)}</td></tr>`).join('');
+    const lista = `<div class="card" style="padding:0"><div class="tw"><table><thead><tr><th>Persona</th><th>Rol</th><th>Su supervisor</th><th>Acceso</th></tr></thead><tbody>${filas || '<tr><td colspan="4" class="empty">Nadie coincide con la búsqueda.</td></tr>'}</tbody></table></div></div>`;
+    const tarjetaTec = t => `<div class="row eq-r ${t.id === E.sel ? 'on' : ''} ${t.conAcceso === false ? 'off' : ''}" data-ficha="${t.id}" style="padding:8px 4px;border-top:1px solid var(--bd)"><span class="av sm">${esc(iniciales(t.nombre))}</span><span class="sp"><b>${esc(t.nombre)}</b></span>${chipAcc(t)}</div>`;
+    const grupos = sups.filter(s => vis.some(v => v.id === s.id || v.supervisorId === s.id)).map(s => { const t = vis.filter(v => v.supervisorId === s.id && v.rol === 'TECNICO'); return `<div class="card"><div class="row eq-r ${s.id === E.sel ? 'on' : ''}" data-ficha="${s.id}"><span class="av">${esc(iniciales(s.nombre))}</span><div class="sp"><b>${esc(s.nombre)}</b><div class="tiny">Supervisor · ${t.length} técnico${t.length === 1 ? '' : 's'}</div></div>${chipAcc(s)}</div>${t.map(tarjetaTec).join('') || '<p class="tiny" style="margin-top:8px">Todavía no tiene técnicos asignados.</p>'}</div>`; });
+    const sinSup = vis.filter(v => v.rol === 'TECNICO' && !v.supervisorId);
+    if (sinSup.length) grupos.push(`<div class="card" style="border-color:#F57C00"><div class="row"><b class="sp">Sin supervisor asignado</b><span class="tiny">${sinSup.length} técnico${sinSup.length === 1 ? '' : 's'}</span></div><p class="tiny" style="margin:4px 0 6px">Sus minutas no le llegan a nadie para validar. Asígnales un supervisor.</p>${sinSup.map(tarjetaTec).join('')}</div>`);
+    const porSup = grupos.join('') || '<div class="empty">Nadie coincide con la búsqueda.</div>';
+    const aviso = c => `<div class="card eq-aviso"><div class="row"><span class="sp"><b>${esc(c.nombre)} pidió un código para restablecer su contraseña</b><div class="tiny">${esc(ROL[c.rol] || c.rol || '')} · el código solo lo ves tú, nunca se le envía</div></div><span class="tiny">Vence en <b>${c.minutos} min</b></span><button class="btn sm fill" data-cod="${c.id}">Ver código</button><button class="btn sm danger" data-no="${c.id}">Anular</button></div></div>`;
+    const ficha = !sel ? '' : (() => {
+      const yo = sel.id === S.user.id, rolObj = roles.find(r => r.name === ROL[sel.rol]);
+      const cod = cods.find(c => c.nombre === sel.nombre);
+      return `<aside class="card eq-ficha"><div class="row"><span class="av">${esc(iniciales(sel.nombre))}</span><div class="sp"><b>${esc(sel.nombre)}</b><div class="tiny">${esc(sel.email)}</div></div><button class="btn sm" data-cerrar aria-label="Cerrar ficha">✕</button></div>
+        <div class="row" style="margin:10px 0">${chipAcc(sel)}${sel.pidioCodigo ? '<span class="chip warn">Pidió código</span>' : ''}</div>
+        <label class="f" for="fr">Rol</label><select id="fr" style="width:100%" ${yo ? 'disabled' : ''}>${Object.entries(ROL).map(([k, v]) => `<option value="${k}" ${k === sel.rol ? 'selected' : ''}>${v}</option>`).join('')}</select>
+        <p class="tiny" style="margin:6px 0 12px">${esc(DESC[sel.rol] || '')}${rolObj ? ` <a href="#" data-verperm="${esc(rolObj.id)}">Ver permisos</a>` : ''}${yo ? ' No puedes cambiar tu propio rol.' : ''}</p>
+        ${sel.rol === 'TECNICO' ? `<label class="f" for="fs">Su supervisor</label><select id="fs" style="width:100%"><option value="">Sin asignar</option>${sups.map(s => `<option value="${s.id}" ${s.id === sel.supervisorId ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select><p class="tiny" style="margin:6px 0 12px">Le llegan las minutas de esta persona para validar.</p>` : ''}
+        <label class="f">Contraseña</label>
+        <p class="tiny" style="margin-bottom:12px">${sel.pidioCodigo ? 'Pidió un código desde la app.' : 'Si olvida su contraseña, la pide desde la app y el código te aparece arriba, en esta pantalla.'}</p>${cod ? `<button class="btn sm fill" data-cod="${cod.id}" style="margin-bottom:12px">Ver código</button>` : ''}
+        <label class="f">Acceso</label>${yo ? '<p class="tiny">Eres tú: no puedes quitarte el acceso.</p>' : sel.conAcceso === false ? `<button class="btn sm" data-dev="${sel.id}">Devolver acceso</button>` : `<button class="btn sm danger" data-quit="${sel.id}">Quitar acceso</button>`}</aside>`;
+    })();
+    const cupo = `<div class="row" style="gap:12px;flex:none"><div class="eq-barra"><i style="width:${Math.min(100, pers.length * 10)}%"></i></div><span class="tiny">${pers.length} de 10 cupos</span></div>`;
+    const rolesHtml = `<div class="grid g3">${roles.map(r => { const n = porRol(r); return `<div class="card"><div class="row"><h2 style="margin:0">${esc(r.name)}</h2><span class="sp"></span><span class="chip">${r.kind === 'fijo' ? 'Fijo' : r.kind === 'base' ? 'Base' : 'De la empresa'}</span></div><p class="muted" style="margin:8px 0">${esc(r.description)}</p><p class="tiny">${n ? `${n} persona${n === 1 ? '' : 's'}` : 'Nadie todavía'} · ${(r.perms || '').split(',').filter(Boolean).length} permisos activos</p><div class="row" style="margin-top:10px"><button class="btn sm" data-perm="${esc(r.id)}" ${r.id === 'admin' ? 'disabled' : ''}>${r.id === 'admin' ? 'Siempre todos los permisos' : 'Editar permisos'}</button>${r.id === 'admin' ? '' : `<button class="btn sm" data-dup="${esc(r.id)}">Duplicar como rol nuevo</button>`}</div></div>`; }).join('')}</div><p class="tiny">Para darle un rol a alguien, abre su ficha en Personas.</p>`;
+    const foco = document.activeElement && document.activeElement.id === 'eqq';
     main.innerHTML = `<div class="page">
-      <div class="row"><div class="tabs"><button class="tab ${tab === 'personas' ? 'on' : ''}" data-t="personas">Personas · ${pers.length}</button><button class="tab ${tab === 'roles' ? 'on' : ''}" data-t="roles">Roles y permisos</button></div><span class="sp"></span>
-        ${tab === 'personas' ? `<span class="tiny">Plan Empresa · ${pers.length} de 10 usuarios</span><button class="btn fill" id="ap" ${pers.length >= 10 ? 'disabled' : ''}>Agregar persona</button>` : '<button class="btn fill" id="nrol">Crear un rol</button>'}</div>
-      ${tab === 'personas' && cods.length ? `<div class="card" style="border-color:#F57C00"><h2>Cambios de contraseña por atender · ${cods.length}</h2>${cods.map(c => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--bd)"><span class="sp"><b>${esc(c.nombre)}</b> · ${esc(c.rol)} <span class="tiny">vence en ${c.minutos} min</span></span><button class="btn sm fill" data-cod="${c.id}">Ver código</button><button class="btn sm danger" data-no="${c.id}">No la reconozco</button></div>`).join('')}<p class="tiny" style="margin-top:8px">Dile el número a la persona en persona o por llamada, nunca por chat.</p></div>` : ''}
-      ${tab === 'personas' ? `<div class="card"><div class="tw"><table><thead><tr><th>Persona</th><th>Rol</th><th>Supervisor</th><th>Estado</th><th>Acceso</th></tr></thead><tbody>${pers.map(p => `<tr>
-        <td><div class="row"><span class="av">${esc(iniciales(p.nombre))}</span><div><b>${esc(p.nombre)}</b><div class="tiny">${esc(p.email)}</div></div></div></td>
-        <td><select data-rol="${p.id}">${Object.entries(ROL).map(([k, v]) => `<option value="${k}" ${k === p.rol ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-        <td>${p.rol === 'TECNICO' ? `<select data-sup="${p.id}"><option value="">Sin supervisor</option>${sups.map(s => `<option value="${s.id}" ${s.id === p.supervisorId ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select>` : '<span class="tiny">—</span>'}</td>
-        <td>${p.conAcceso === false ? '<span class="chip err">Sin acceso</span>' : p.pidioCodigo ? '<span class="chip warn">Pidió código</span>' : '<span class="chip ok">Con acceso</span>'}</td>
-        <td>${p.id === S.user.id ? '<span class="tiny">Tú</span>' : p.conAcceso === false ? `<button class="btn sm" data-dev="${p.id}">Devolver acceso</button>` : `<button class="btn sm danger" data-quit="${p.id}">Quitar acceso</button>`}</td></tr>`).join('')}</tbody></table></div>
-        <p class="tiny" style="margin-top:10px">${pers.length >= 10 ? 'El plan Empresa llegó a sus 10 usuarios: pide más usuarios para agregar personas.' : 'Al agregar una persona le entregas su correo y una contraseña inicial.'}</p></div>`
-      : `<div class="grid g3">${roles.map(r => `<div class="card"><div class="row"><h2 style="margin:0">${esc(r.name)}</h2><span class="sp"></span><span class="chip">${r.kind === 'fijo' ? 'Fijo' : r.kind === 'base' ? 'Base' : 'Propio'}</span></div><p class="muted" style="margin:8px 0">${esc(r.description)}</p><p class="tiny">${(r.perms || '').split(',').filter(Boolean).length} permisos activos</p><button class="btn sm" style="margin-top:10px" data-perm="${esc(r.id)}" ${r.id === 'admin' ? 'disabled' : ''}>${r.id === 'admin' ? 'Siempre todos los permisos' : 'Editar permisos'}</button></div>`).join('')}</div>`}
+      <div class="row"><div class="tabs"><button class="tab ${E.tab === 'personas' ? 'on' : ''}" data-t="personas">Personas · ${pers.length}</button><button class="tab ${E.tab === 'roles' ? 'on' : ''}" data-t="roles">Roles y permisos · ${roles.length}</button></div><span class="sp"></span>
+        ${E.tab === 'personas' ? `<button class="btn fill" id="ap" ${pers.length >= 10 ? 'disabled' : ''}>Agregar persona</button>` : '<button class="btn fill" id="nrol">Crear rol</button>'}</div>
+      ${E.tab === 'personas' ? `${cods.map(aviso).join('')}
+      <div class="row eq-bar"><input type="search" id="eqq" placeholder="Buscar por nombre o correo" value="${esc(E.q)}" style="flex:1;min-width:200px;max-width:340px">
+        <div class="tabs">${[['todos', 'Todos'], ['TECNICO', 'Técnicos'], ['SUPERVISOR', 'Supervisores'], ['sin', 'Sin acceso']].map(([k, l]) => `<button class="tab sm ${E.filtro === k ? 'on' : ''}" data-f="${k}">${l} · ${cuenta[k]}</button>`).join('')}</div><span class="sp"></span>
+        <div class="tabs"><button class="tab sm ${E.vista === 'lista' ? 'on' : ''}" data-v="lista">Lista</button><button class="tab sm ${E.vista === 'sup' ? 'on' : ''}" data-v="sup">Por supervisor</button></div></div>
+      ${cupo}
+      <div class="eq-wrap ${sel ? 'con' : ''}"><div class="eq-main">${E.vista === 'lista' ? lista : porSup}</div>${ficha}</div>
+      <p class="tiny">${pers.length >= 10 ? 'El plan Empresa llegó a sus 10 usuarios: pide más usuarios para agregar personas.' : 'Cada técnico envía sus minutas al supervisor que tiene asignado. Quien queda sin acceso no entra a la app ni a la web, y su historial se conserva.'}</p>` : rolesHtml}
     </div>`;
-    main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; cargar().catch(e => toast(errTxt(e))); });
-    const ap = $('#ap', main); if (ap) ap.onclick = () => agregarPersona(sups, cargar);
-    const nrol = $('#nrol', main); if (nrol) nrol.onclick = () => permisos(null, cargar);
-    main.querySelectorAll('[data-perm]').forEach(b => b.onclick = () => permisos(roles.find(r => r.id === b.dataset.perm), cargar));
+    if (foco) { const i = $('#eqq', main); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+    const re = async () => { try { await cargar(); } catch (e) { toast(errTxt(e)); } };
+    main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { E.tab = b.dataset.t; re(); });
+    main.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { E.filtro = b.dataset.f; re(); });
+    main.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { E.vista = b.dataset.v; re(); });
+    const eqq = $('#eqq', main); if (eqq) eqq.oninput = () => { E.q = eqq.value; re(); };
+    main.querySelectorAll('[data-ficha]').forEach(r => r.onclick = () => { E.sel = Number(r.dataset.ficha); re(); });
+    const cf = $('[data-cerrar]', main); if (cf) cf.onclick = () => { E.sel = null; re(); };
+    const ap = $('#ap', main); if (ap) ap.onclick = () => agregarPersona(sups, re);
+    const nrol = $('#nrol', main); if (nrol) nrol.onclick = () => permisos(null, re);
+    main.querySelectorAll('[data-perm]').forEach(b => b.onclick = () => permisos(roles.find(r => r.id === b.dataset.perm), re));
+    main.querySelectorAll('[data-verperm]').forEach(a => a.onclick = e => { e.preventDefault(); permisos(roles.find(r => r.id === a.dataset.verperm), re); });
+    main.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => {
+      const r = roles.find(x => x.id === b.dataset.dup);
+      try { await api('/api/roles', { method: 'POST', body: { name: r.name + ' (copia)', perms: (r.perms || '').split(',').filter(Boolean) } }); toast('Rol duplicado: ponle un nombre y ajusta sus permisos.'); } catch (e) { toast(errTxt(e)); }
+      await re();
+    });
     main.querySelectorAll('[data-cod]').forEach(b => b.onclick = async () => {
       try { const c = await api(`/api/recuperaciones/${b.dataset.cod}/codigo`); dialogo(`<h2 style="font-size:18px">Código de ${esc(c.nombre)}</h2><p style="font-size:44px;font-weight:700;text-align:center;letter-spacing:.2em;margin:18px 0">${esc(c.numero)}</p><p class="muted" style="text-align:center">Vigente ${c.minutos} min. Díctaselo a la persona; no lo envíes por chat.</p><div class="row" style="justify-content:center;margin-top:14px"><button class="btn" data-x>Cerrar</button></div>`); await cargar(); } catch (e) { toast(errTxt(e)); }
     });
     main.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => {
-      try { await api(`/api/recuperaciones/${b.dataset.no}/rechazar`, { method: 'POST', body: {} }); toast('Solicitud rechazada.'); await cargar(); } catch (e) { toast(errTxt(e)); }
+      try { await api(`/api/recuperaciones/${b.dataset.no}/rechazar`, { method: 'POST', body: {} }); toast('Solicitud anulada.'); await re(); } catch (e) { toast(errTxt(e)); }
     });
-    main.querySelectorAll('[data-rol]').forEach(s => s.onchange = async () => {
-      try { await api(`/api/equipo/${s.dataset.rol}/rol`, { method: 'PUT', body: { rol: s.value } }); toast('Rol actualizado.'); } catch (e) { toast(errTxt(e)); }
-      await cargar();
-    });
-    const poner = async (id, conAcceso, msg) => { try { await api(`/api/equipo/${id}/acceso`, { method: 'PUT', body: { conAcceso } }); toast(msg); } catch (e) { toast(errTxt(e)); } await cargar(); };
+    const fr = $('#fr', main); if (fr) fr.onchange = async () => {
+      try { await api(`/api/equipo/${sel.id}/rol`, { method: 'PUT', body: { rol: fr.value } }); toast('Rol actualizado.'); } catch (e) { toast(errTxt(e)); }
+      await re();
+    };
+    const fs = $('#fs', main); if (fs) fs.onchange = async () => {
+      try { await api(`/api/equipo/${sel.id}/supervisor`, { method: 'PUT', body: { supervisorId: fs.value ? Number(fs.value) : null } }); toast('Supervisor asignado.'); } catch (e) { toast(errTxt(e)); }
+      await re();
+    };
+    const poner = async (id, conAcceso, msg) => { try { await api(`/api/equipo/${id}/acceso`, { method: 'PUT', body: { conAcceso } }); toast(msg); } catch (e) { toast(errTxt(e)); } await re(); };
     main.querySelectorAll('[data-dev]').forEach(b => b.onclick = () => poner(b.dataset.dev, true, 'Acceso devuelto.'));
     main.querySelectorAll('[data-quit]').forEach(b => b.onclick = () => {
       const p = pers.find(x => String(x.id) === b.dataset.quit);
       const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Quitar acceso a ${esc(p.nombre)}</h2><p class="muted" style="margin-bottom:12px">No podrá iniciar sesión ni renovarla. Sus datos y minutas se conservan y puedes devolverle el acceso cuando quieras. Si ahora tiene la sesión abierta, termina en un máximo de 60 minutos.</p><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Cancelar</button><button class="btn fill danger" id="qok">Quitar acceso</button></div>`);
       $('#qok', d.el).onclick = () => { d.close(); poner(p.id, false, 'Acceso retirado.'); };
     });
-    main.querySelectorAll('[data-sup]').forEach(s => s.onchange = async () => {
-      try { await api(`/api/equipo/${s.dataset.sup}/supervisor`, { method: 'PUT', body: { supervisorId: s.value ? Number(s.value) : null } }); toast('Supervisor asignado.'); } catch (e) { toast(errTxt(e)); }
-      await cargar();
-    });
   };
   await cargar();
 };
 
 V.cuenta = async main => {
-  const [p, emp] = await Promise.all([api('/api/profile/me'), S.user.rol === 'ADMINISTRADOR' ? api('/api/empresa') : Promise.resolve(null)]);
+  const admin = S.user.rol === 'ADMINISTRADOR';
+  const [p, emp, av] = await Promise.all([api('/api/profile/me'), admin ? api('/api/empresa') : Promise.resolve(null), api('/api/notifications/avisos').catch(() => null)]);
+  const pend = await Cola.cuantas();
   const oscuro = document.documentElement.dataset.theme === 'dark';
+  const ops = (av && av.opciones) || [];
+  const sw = (id, on, txt, ayuda) => `<label class="row cu-sw" style="cursor:pointer"><input type="checkbox" ${id} ${on ? 'checked' : ''}><span class="sp"><b>${txt}</b>${ayuda ? `<span class="tiny" style="display:block">${ayuda}</span>` : ''}</span></label>`;
+  const copia = (emp && emp.copia) || {};
+  const FREC = { off: 'Apagada', diaria: 'Diaria', semanal: 'Semanal', mensual: 'Mensual' };
   main.innerHTML = `<div class="page">
     <div class="card"><div class="row"><span class="av" style="width:56px;height:56px;font-size:20px">${esc(iniciales(p.fullName))}</span><div><h2 style="margin:0;font-size:20px">${esc(p.fullName)}</h2><p class="muted">${esc(ROL[p.role] || p.role)} · ${esc(p.company || '')}</p></div></div>
-      <div class="grid g2" style="margin-top:16px"><div><label class="f">Correo</label><div>${esc(p.email)}</div></div><div><label class="f">Teléfono</label><div>${esc(p.phone || '—')}</div></div><div><label class="f">Ciudad</label><div>${esc(p.city || '—')}</div></div><div><label class="f">Evaluaciones</label><div>${p.totalEvaluations ?? 0}</div></div></div></div>
+      <div class="grid g2" style="margin-top:16px"><div><label class="f">Correo</label><div>${esc(p.email)}</div></div><div><label class="f">Teléfono</label><div>${esc(p.phone || '—')}</div></div><div><label class="f">Ciudad</label><div>${esc(p.city || '—')}</div></div><div><label class="f">Evaluaciones</label><div>${p.totalEvaluations ?? 0}</div></div></div>
+      <p class="tiny" style="margin-top:12px">Tu nombre, rol y empresa los cambia el administrador en Equipo y accesos.</p></div>
+    ${ops.length ? `<div class="card"><h2>Notificaciones</h2>${sw('id="avt"', ops.some(o => o.activo), 'Recibir notificaciones', 'Apágalo para pausar todos los avisos (por ejemplo, en vacaciones).')}
+      <div class="tiny" style="font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px">Avisarme cuando…</div>${ops.map(o => sw(`data-av="${esc(o.clave)}"`, o.activo, esc(o.texto))).join('')}</div>` : ''}
+    <div class="card"><h2>Seguridad</h2><div class="row"><span class="sp"><b>Contraseña</b><span class="tiny" style="display:block">Para cambiarla necesitas la actual. Mínimo 8 caracteres.</span></span><button class="btn sm" id="cpb">Cambiar contraseña</button></div>
+      <div id="cpf" style="display:none;margin-top:12px"><div class="grid g3"><div><label class="f" for="cp0">Contraseña actual</label><input type="password" id="cp0" autocomplete="current-password"></div><div><label class="f" for="cp1">Nueva contraseña</label><input type="password" id="cp1" autocomplete="new-password"></div><div><label class="f" for="cp2">Repite la nueva</label><input type="password" id="cp2" autocomplete="new-password"></div></div>
+        <div id="cpe" class="err-t" style="display:none;margin-top:10px"></div><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="cpc">Cancelar</button><button class="btn fill" id="cpg">Guardar contraseña</button></div></div></div>
     ${emp ? `<div class="card"><h2>Empresa</h2><div class="row" style="align-items:flex-end"><div style="flex:1;min-width:220px"><label class="f" for="en">Nombre de la empresa</label><input type="text" id="en" value="${esc(emp.nombre)}" maxlength="150"></div><button class="btn" id="gn">Guardar nombre</button></div>
       <div class="row" style="margin-top:16px"><div style="width:64px;height:64px;border:1px solid var(--bd);border-radius:12px;display:grid;place-items:center;overflow:hidden;background:var(--s2)">${emp.logo ? `<img alt="Logo" src="${esc(emp.logo)}" style="max-width:100%;max-height:100%">` : '<span class="tiny">Sin logo</span>'}</div>
-      <div><label class="btn" for="lg" style="display:inline-block">Subir logo</label><input type="file" id="lg" accept="image/png,image/jpeg" class="sr"><p class="tiny" style="margin-top:6px">PNG o JPG de hasta 2 MB.</p></div></div></div>` : ''}
+      <div><label class="btn" for="lg" style="display:inline-block">Subir logo</label><input type="file" id="lg" accept="image/png,image/jpeg" class="sr"><p class="tiny" style="margin-top:6px">PNG o JPG de hasta 2 MB. Sale en la cabecera de las minutas y en el PDF.</p></div></div></div>
+    <div class="card"><h2>Copia de seguridad</h2><div class="grid g3"><div><label class="f" for="cbf">Frecuencia</label><select id="cbf" style="width:100%">${Object.entries(FREC).map(([k, v]) => `<option value="${k}" ${k === copia.frecuencia ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+      <div><label class="f" for="cbh">Hora</label><select id="cbh" style="width:100%">${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === copia.hora ? 'selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select></div>
+      <div><label class="f" for="cbc">Se envía a</label><input type="email" id="cbc" value="${esc(copia.correo || '')}" placeholder="correo@empresa.com"></div></div>
+      <label class="row" style="margin-top:12px;cursor:pointer"><input type="checkbox" id="cbp" ${copia.incluyeFotos ? 'checked' : ''}> Incluir fotos y PDF</label>
+      <p class="tiny" style="margin-top:8px">Última copia: ${esc(copia.ultima || 'nunca')}.</p><div id="cbe" class="err-t" style="display:none;margin-top:10px"></div>
+      <div class="row" style="margin-top:12px"><button class="btn fill" id="cbg">Guardar</button><button class="btn" id="cba">Hacer copia ahora</button></div></div>
+    <div class="card"><h2>Trazabilidad</h2><div class="row"><span class="sp"><b>Bitácora de la empresa</b><span class="tiny" style="display:block">Quién hizo qué y cuándo. Nada se borra sin dejar registro.</span></span><button class="btn sm" id="bit">Ver bitácora</button></div></div>
+    <div class="card"><h2>Ambiente</h2>${emp.enProduccion ? `<p><b>En producción</b></p><p class="tiny">Desde el ${esc(emp.produccionDesde || '')}${emp.produccionPor ? ' · por ' + esc(emp.produccionPor) : ''}.</p>`
+      : `<div class="row"><span class="sp"><b>Modo demo</b><span class="tiny" style="display:block">Las minutas son de prueba. «Pasar a producción» deja los reportes en 0 y no se puede deshacer.</span></span><button class="btn sm danger" id="prod">Pasar a producción</button></div>`}</div>` : ''}
+    <div class="card"><h2>Sincronización</h2><div class="row"><span class="sp"><b>Fotos por subir</b><span class="tiny" style="display:block">Si una foto no se puede subir, espera en este navegador y se sube sola al volver la conexión. Por subir: ${pend}.</span></span><button class="btn sm" id="sync">Sincronizar ahora</button></div></div>
     <div class="card"><h2>Apariencia</h2><label class="row" style="cursor:pointer"><input type="checkbox" id="noche" ${oscuro ? 'checked' : ''}> Modo noche</label></div>
     <div class="card"><h2>Sesión</h2><button class="btn danger" id="salir">Cerrar sesión</button></div>
   </div>`;
@@ -431,6 +496,43 @@ V.cuenta = async main => {
     const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
     try { await api('/api/empresa/logo', { method: 'PUT', body: { base64: url, mime: f.type } }); toast('Logo actualizado.'); await V.cuenta(main); } catch (e) { toast(errTxt(e)); }
   };
+  /* notificaciones: «Recibir notificaciones» enciende o apaga todas; cada opción se guarda al tocarla */
+  const guardarAvisos = async cambios => { try { await api('/api/notifications/avisos', { method: 'PUT', body: cambios }); } catch (e) { toast(errTxt(e)); await V.cuenta(main); } };
+  const avt = $('#avt'); if (avt) avt.onchange = async () => {
+    const c = {}; ops.forEach(o => { c[o.clave] = avt.checked; }); main.querySelectorAll('[data-av]').forEach(i => { i.checked = avt.checked; });
+    await guardarAvisos(c); toast(avt.checked ? 'Notificaciones activadas.' : 'Notificaciones pausadas.');
+  };
+  main.querySelectorAll('[data-av]').forEach(i => i.onchange = async () => {
+    await guardarAvisos({ [i.dataset.av]: i.checked });
+    if (avt) avt.checked = [...main.querySelectorAll('[data-av]')].some(x => x.checked);
+  });
+  /* contraseña */
+  $('#cpb').onclick = () => { $('#cpf').style.display = 'block'; $('#cp0').focus(); };
+  $('#cpc').onclick = () => { $('#cpf').style.display = 'none'; ['#cp0', '#cp1', '#cp2'].forEach(s => { $(s).value = ''; }); $('#cpe').style.display = 'none'; };
+  $('#cpg').onclick = async () => {
+    const e = $('#cpe'), a = $('#cp0').value, n = $('#cp1').value, r = $('#cp2').value;
+    const mal = t => { e.textContent = t; e.style.display = 'block'; };
+    if (!a) return mal('Escribe tu contraseña actual.');
+    if (n.length < 8) return mal('La nueva contraseña debe tener al menos 8 caracteres.');
+    if (n !== r) return mal('Las contraseñas nuevas no coinciden.');
+    try { await api('/api/auth/change-password', { method: 'POST', body: { currentPassword: a, newPassword: n } }); toast('Contraseña cambiada.'); $('#cpc').click(); } catch (x) { mal(errTxt(x)); }
+  };
+  /* copia de seguridad, bitácora y ambiente (administrador) */
+  const cbg = $('#cbg'); if (cbg) cbg.onclick = async () => {
+    const e = $('#cbe'); e.style.display = 'none';
+    try { await api('/api/empresa/copia-seguridad', { method: 'PUT', body: { frecuencia: $('#cbf').value, hora: Number($('#cbh').value), correo: $('#cbc').value.trim(), incluyeFotos: $('#cbp').checked } }); toast('Copia de seguridad guardada.'); }
+    catch (x) { e.textContent = errTxt(x); e.style.display = 'block'; }
+  };
+  const cba = $('#cba'); if (cba) cba.onclick = async () => { cba.disabled = true; try { await api('/api/copias/ahora', { method: 'POST', body: {} }); toast('Copia hecha.'); await V.cuenta(main); } catch (x) { toast(errTxt(x)); cba.disabled = false; } };
+  const bit = $('#bit'); if (bit) bit.onclick = async () => {
+    let l; try { l = await api('/api/bitacora'); } catch (e) { toast(errTxt(e)); return; }
+    dialogo(`<h2 style="font-size:18px;margin-bottom:4px">Bitácora de la empresa</h2><p class="muted" style="margin-bottom:10px">Los últimos ${l.length} movimientos.</p><div style="max-height:56vh;overflow:auto">${l.length ? l.map(x => `<div class="pn-ac"><span class="tiny">${esc(x.ts)}</span><span><b>${esc(x.usuario)}</b> ${esc(x.accion)}</span></div>`).join('') : '<div class="empty">Todavía no hay movimientos.</div>'}</div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-x>Cerrar</button></div>`);
+  };
+  const prod = $('#prod'); if (prod) prod.onclick = () => {
+    const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Pasar a producción</h2><p class="muted" style="margin-bottom:12px">Las minutas de prueba dejan de contar: los reportes y el panel empiezan en 0. Se conservan las minutas completas, en revisión y validadas. <b>Esto no se puede deshacer.</b></p><div class="row" style="justify-content:flex-end"><button class="btn" data-x>Cancelar</button><button class="btn fill danger" id="pok">Pasar a producción</button></div>`);
+    $('#pok', d.el).onclick = async () => { try { await api('/api/empresa/produccion', { method: 'POST', body: {} }); d.close(); toast('La empresa pasó a producción.'); await V.cuenta(main); } catch (x) { d.close(); toast(errTxt(x)); } };
+  };
+  $('#sync').onclick = async () => { const b = $('#sync'); b.disabled = true; await Cola.procesar(); toast('Sincronización terminada.'); await V.cuenta(main); };
   $('#noche').onchange = e => { const d = e.target.checked; document.documentElement.dataset.theme = d ? 'dark' : 'light'; store.set('na.theme', d ? 'dark' : 'light'); };
   $('#salir').onclick = () => cerrar(false);
 };
