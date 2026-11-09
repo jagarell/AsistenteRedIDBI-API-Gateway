@@ -90,7 +90,7 @@ const errTxt = e => (e && e.message) || 'Ocurrió un error. Intenta de nuevo.';
 /* ---------- menú por rol (docs §39) ---------- */
 const MENU = {
   ADMINISTRADOR: [['inicio', 'Inicio', 'inicio'], ['panel', 'Panel', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'],
-    ['preguntas', 'Preguntas y reglas', 'preg', 1], ['equipo', 'Equipo y accesos', 'team'], ['plan', 'Plan de la empresa', 'plan', 1], ['cuenta', 'Mi perfil y configuración', 'user']],
+    ['preguntas', 'Preguntas y reglas', 'preg'], ['equipo', 'Equipo y accesos', 'team'], ['plan', 'Plan de la empresa', 'plan'], ['cuenta', 'Mi perfil y configuración', 'user']],
   SUPERVISOR: [['panel', 'Panel · mi equipo', 'panel'], ['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['cuenta', 'Mi perfil y configuración', 'user']],
   TECNICO: [['notificaciones', 'Notificaciones', 'bell'], ['reportes', 'Reportes', 'rep'], ['cuenta', 'Mi perfil y configuración', 'user']],
 };
@@ -189,9 +189,10 @@ V.reportes = async main => {
       : `<div class="card"><h2>Minutas</h2>${(r.minutas || []).length ? `<div class="tw"><table><thead><tr><th>Local</th><th>Técnico</th><th>Supervisor</th><th>Fecha</th><th>Estado</th><th>Plazo</th><th>Puntaje</th></tr></thead><tbody>${r.minutas.map(m =>
           `<tr><td><b>${esc(m.local)}</b></td><td>${esc(m.tecnico)}</td><td>${esc(m.supervisor)}</td><td>${fmtF(m.fecha)}</td><td>${chipEstado(m.estado)}</td><td>${esc(m.plazo || '—')}</td><td>${m.puntaje == null ? '—' : esc(m.puntaje) + ' %'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No hay minutas para mostrar.</div>'}</div>`;
     main.innerHTML = `<div class="page">
-      <div class="tabs">${(r.pestanas || ['general']).map(t => `<button class="tab ${t === vista ? 'on' : ''}" data-t="${t}">${tabs[t] || t}</button>`).join('')}</div>
+      <div class="row"><div class="tabs">${(r.pestanas || ['general']).map(t => `<button class="tab ${t === vista ? 'on' : ''}" data-t="${t}">${tabs[t] || t}</button>`).join('')}</div><span class="sp"></span>${S.user.rol !== 'TECNICO' ? `<button class="btn" id="plz">${S.user.rol === 'ADMINISTRADOR' ? 'Editar plazos' : 'Ver plazos'}</button>` : ''}</div>
       ${kpis}${cuerpo}</div>`;
     main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { vista = b.dataset.t; cargar().catch(e => toast(errTxt(e))); });
+    const pz = $('#plz', main); if (pz) pz.onclick = () => plazos(cargar);
   };
   await cargar();
 };
@@ -250,19 +251,26 @@ V.equipo = async main => {
   if (S.user.rol !== 'ADMINISTRADOR') { main.innerHTML = '<div class="page"><div class="empty">Solo el administrador ve Equipo y accesos.</div></div>'; return; }
   let tab = 'personas';
   const cargar = async () => {
-    const [pers, roles] = await Promise.all([api('/api/equipo'), api('/api/roles')]);
+    const [pers, roles, cods] = await Promise.all([api('/api/equipo'), api('/api/roles'), api('/api/recuperaciones').catch(() => [])]);
     const sups = pers.filter(p => p.rol === 'SUPERVISOR');
     main.innerHTML = `<div class="page">
       <div class="tabs"><button class="tab ${tab === 'personas' ? 'on' : ''}" data-t="personas">Personas · ${pers.length}</button><button class="tab ${tab === 'roles' ? 'on' : ''}" data-t="roles">Roles y permisos</button></div>
+      ${tab === 'personas' && cods.length ? `<div class="card" style="border-color:#F57C00"><h2>Cambios de contraseña por atender · ${cods.length}</h2>${cods.map(c => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--bd)"><span class="sp"><b>${esc(c.nombre)}</b> · ${esc(c.rol)} <span class="tiny">vence en ${c.minutos} min</span></span><button class="btn sm fill" data-cod="${c.id}">Ver código</button><button class="btn sm danger" data-no="${c.id}">No la reconozco</button></div>`).join('')}<p class="tiny" style="margin-top:8px">Dile el número a la persona en persona o por llamada, nunca por chat.</p></div>` : ''}
       ${tab === 'personas' ? `<div class="card"><div class="tw"><table><thead><tr><th>Persona</th><th>Rol</th><th>Supervisor</th><th>Estado</th></tr></thead><tbody>${pers.map(p => `<tr>
         <td><div class="row"><span class="av">${esc(iniciales(p.nombre))}</span><div><b>${esc(p.nombre)}</b><div class="tiny">${esc(p.email)}</div></div></div></td>
         <td><select data-rol="${p.id}">${Object.entries(ROL).map(([k, v]) => `<option value="${k}" ${k === p.rol ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
         <td>${p.rol === 'TECNICO' ? `<select data-sup="${p.id}"><option value="">Sin supervisor</option>${sups.map(s => `<option value="${s.id}" ${s.id === p.supervisorId ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select>` : '<span class="tiny">—</span>'}</td>
         <td>${p.pidioCodigo ? '<span class="chip warn">Pidió código</span>' : '<span class="chip ok">Con acceso</span>'}</td></tr>`).join('')}</tbody></table></div>
-        <p class="tiny" style="margin-top:10px">Agregar personas y entregar códigos de contraseña llegan en la próxima entrega de la web.</p></div>`
+        <p class="tiny" style="margin-top:10px">Agregar personas llega en la próxima entrega de la web.</p></div>`
       : `<div class="grid g3">${roles.map(r => `<div class="card"><div class="row"><h2 style="margin:0">${esc(r.name)}</h2><span class="sp"></span><span class="chip">${r.kind === 'fijo' ? 'Fijo' : r.kind === 'base' ? 'Base' : 'Propio'}</span></div><p class="muted" style="margin:8px 0">${esc(r.description)}</p><p class="tiny">${(r.perms || '').split(',').filter(Boolean).length} permisos activos</p></div>`).join('')}</div>`}
     </div>`;
     main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; cargar().catch(e => toast(errTxt(e))); });
+    main.querySelectorAll('[data-cod]').forEach(b => b.onclick = async () => {
+      try { const c = await api(`/api/recuperaciones/${b.dataset.cod}/codigo`); dialogo(`<h2 style="font-size:18px">Código de ${esc(c.nombre)}</h2><p style="font-size:44px;font-weight:700;text-align:center;letter-spacing:.2em;margin:18px 0">${esc(c.numero)}</p><p class="muted" style="text-align:center">Vigente ${c.minutos} min. Díctaselo a la persona; no lo envíes por chat.</p><div class="row" style="justify-content:center;margin-top:14px"><button class="btn" data-x>Cerrar</button></div>`); await cargar(); } catch (e) { toast(errTxt(e)); }
+    });
+    main.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => {
+      try { await api(`/api/recuperaciones/${b.dataset.no}/rechazar`, { method: 'POST', body: {} }); toast('Solicitud rechazada.'); await cargar(); } catch (e) { toast(errTxt(e)); }
+    });
     main.querySelectorAll('[data-rol]').forEach(s => s.onchange = async () => {
       try { await api(`/api/equipo/${s.dataset.rol}/rol`, { method: 'PUT', body: { rol: s.value } }); toast('Rol actualizado.'); } catch (e) { toast(errTxt(e)); }
       await cargar();
@@ -290,6 +298,97 @@ V.cuenta = async main => {
 
 V.proximamente = async (main, ruta) => {
   main.innerHTML = `<div class="page"><div class="card"><h2>${esc(TITULO[ruta] || 'Próximamente')}</h2><p class="muted">Este módulo ya está en la app y llegará a la web en una próxima entrega.</p></div></div>`;
+};
+
+
+/* ---------- plazos (Reportes › Editar plazos) ---------- */
+async function plazos(despues) {
+  let p;
+  try { p = await api('/api/panel/plazos'); } catch (e) { toast(errTxt(e)); return; }
+  const admin = S.user.rol === 'ADMINISTRADOR';
+  const d = dialogo(`<h2 style="font-size:18px;margin-bottom:4px">Plazos de la empresa</h2><p class="muted" style="margin-bottom:12px">Minutos que tomaba una minuta a mano, por tipo de local. Sirven para calcular las horas ahorradas.</p>
+    <div id="rb">${Object.entries(p.rubros || {}).map(([k, v]) => `<div class="row" style="margin-bottom:8px"><span class="sp">${esc(k)}</span><input type="number" min="5" max="1440" data-r="${esc(k)}" value="${esc(v)}" style="width:110px" ${admin ? '' : 'disabled'}> min</div>`).join('')}</div>
+    <div class="row" style="margin:12px 0"><span class="sp">Costo por hora de técnico (S/)</span><input type="number" min="1" max="1000" step="0.5" id="ch" value="${esc(p.costoHora)}" style="width:110px" ${admin ? '' : 'disabled'}></div>
+    <p class="tiny">Meta del técnico: ${esc(p.metaTecnicoMin)} min por minuta · Meta del supervisor: ${esc(p.metaSupervisorHoras)} h para validar.</p>
+    <div id="pe" class="err-t" style="display:none;margin-top:10px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-x>${admin ? 'Cancelar' : 'Cerrar'}</button>${admin ? '<button class="btn fill" id="gp">Guardar</button>' : ''}</div>`);
+  const g = $('#gp', d.el);
+  if (g) g.onclick = async () => {
+    const rubros = {}; d.el.querySelectorAll('[data-r]').forEach(i => { rubros[i.dataset.r] = Number(i.value); });
+    try { await api('/api/panel/plazos', { method: 'PUT', body: { rubros, costoHora: Number($('#ch', d.el).value) } }); d.close(); toast('Plazos guardados.'); if (despues) await despues(); }
+    catch (e) { const x = $('#pe', d.el); x.textContent = errTxt(e); x.style.display = 'block'; }
+  };
+}
+
+/* ---------- Preguntas y reglas ---------- */
+V.preguntas = async main => {
+  if (S.user.rol !== 'ADMINISTRADOR') { main.innerHTML = '<div class="page"><div class="empty">Solo el administrador configura las preguntas y reglas.</div></div>'; return; }
+  let tab = 'preguntas';
+  const TIPOS = ['Aviso', 'Recomendación', 'Observación'];
+  const cargar = async () => {
+    const [cat, propias, reglas] = await Promise.all([api('/api/flujo/catalogo'), api('/api/preguntas'), api('/api/reglas')]);
+    const secs = cat.secciones || [];
+    let cuerpo = '';
+    if (tab === 'preguntas') {
+      cuerpo = `<p class="muted">${cat.total ?? secs.reduce((n, x) => n + x.preguntas.length, 0)} preguntas del Chat IA, por sección y en el orden del motor. Las que agregues tú o el Asistente IA salen aparte.</p>
+        ${propias.length ? `<div class="card"><h2>Agregadas por la empresa</h2>${propias.map(p => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--bd)"><span class="sp">${esc(p.texto || p.id)}</span><span class="chip">${esc(p.seccionId || '—')}</span></div>`).join('')}</div>` : ''}
+        ${secs.map(x => `<div class="card"><h2>${esc(x.id)} · ${esc(x.nombre)} <span class="tiny">(${x.preguntas.length})</span></h2>${x.preguntas.map(q => `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--bd)"><span class="tiny" style="width:34px">${q.orden}</span><span class="sp">${esc(q.texto)}</span>${q.evidencia ? '<span class="chip info">Foto</span>' : ''}<span class="chip">${esc(q.tipo)}</span>${q.opcional ? '<span class="chip warn">Opcional</span>' : ''}</div>`).join('')}</div>`).join('')}`;
+    } else if (tab === 'reglas') {
+      cuerpo = `<div class="row"><p class="muted sp">Reglas que el análisis aplica a cada visita. Puedes desactivarlas, editarlas o crear las tuyas.</p><button class="btn fill" id="nr">Nueva regla</button></div>
+        <div class="card"><div class="tw"><table><thead><tr><th>Regla</th><th>Tipo</th><th>Cuándo</th><th>Origen</th><th>Activa</th><th></th></tr></thead><tbody>${reglas.map(r => `<tr>
+          <td><b>${esc(r.nombre)}</b><div class="tiny">${esc(r.texto || '')}</div></td><td><span class="chip ${r.tipo === 'Aviso' ? 'warn' : r.tipo === 'Recomendación' ? 'info' : 'lila'}">${esc(r.tipo)}</span></td><td>${esc(r.cuando || '—')}</td>
+          <td class="tiny">${r.origen === 'base' ? 'Base' : esc(r.origen || '')}</td>
+          <td><input type="checkbox" data-act="${esc(r.id)}" ${r.activa ? 'checked' : ''} aria-label="Activa"></td>
+          <td><div class="row"><button class="btn sm" data-ed="${esc(r.id)}">Editar</button>${r.id === 'SISIMP' ? '' : `<button class="btn sm danger" data-del="${esc(r.id)}">Eliminar</button>`}</div></td></tr>`).join('')}</tbody></table></div></div>`;
+    } else {
+      cuerpo = `<p class="muted">Vista por secciones del flujo del Chat IA, en el orden en que se hacen las preguntas. Las que tienen foto llevan un punto azul.</p>
+        <div class="card" style="overflow-x:auto"><div class="row" style="align-items:flex-start;flex-wrap:nowrap;gap:16px">${secs.map(x => `<div style="min-width:170px"><div class="chip info" style="margin-bottom:8px">${esc(x.id)} · ${esc(x.nombre)}</div>${x.preguntas.map(q => `<div title="${esc(q.texto)}" style="font-size:12px;padding:5px 8px;margin-bottom:5px;border:1px solid var(--bd);border-radius:8px;background:var(--s2);${q.evidencia ? 'border-left:3px solid var(--pri)' : ''}">${esc(q.id)}</div>`).join('')}</div>`).join('')}</div></div>`;
+    }
+    main.innerHTML = `<div class="page"><div class="tabs">${[['preguntas', 'Preguntas'], ['reglas', 'Reglas'], ['mapa', 'Mapa de nodos']].map(([k, v]) => `<button class="tab ${k === tab ? 'on' : ''}" data-t="${k}">${v}</button>`).join('')}</div>${cuerpo}</div>`;
+    main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tab = b.dataset.t; cargar().catch(e => toast(errTxt(e))); });
+    main.querySelectorAll('[data-act]').forEach(c => c.onchange = async () => {
+      try { await api('/api/reglas/' + c.dataset.act, { method: 'PUT', body: { activa: c.checked } }); toast(c.checked ? 'Regla activada.' : 'Regla desactivada.'); } catch (e) { toast(errTxt(e)); c.checked = !c.checked; }
+    });
+    const form = (r, titulo, onSave) => {
+      const sis = r && r.id === 'SISIMP';
+      const d = dialogo(`<h2 style="font-size:18px;margin-bottom:12px">${titulo}</h2>
+        ${sis ? `<label class="f">Nombre del sistema de impresiones</label><input type="text" id="rv" value="${esc(r.valor || '')}">`
+        : `<label class="f">Nombre</label><input type="text" id="rn" value="${esc(r?.nombre || '')}"><label class="f" style="margin-top:10px">Tipo</label><select id="rt" style="width:100%">${TIPOS.map(t => `<option ${r?.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+           <label class="f" style="margin-top:10px">Cuándo aplica</label><input type="text" id="rc" value="${esc(r?.cuando || '')}" placeholder="Ej.: No hay internet contratado">
+           <label class="f" style="margin-top:10px">Texto que sale en la minuta</label><textarea id="rx" rows="3">${esc(r?.texto || '')}</textarea>`}
+        <div id="re" class="err-t" style="display:none;margin-top:10px"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-x>Cancelar</button><button class="btn fill" id="rg">Guardar</button></div>`);
+      $('#rg', d.el).onclick = async () => {
+        const body = sis ? { valor: $('#rv', d.el).value.trim() } : { nombre: $('#rn', d.el).value.trim(), tipo: $('#rt', d.el).value, cuando: $('#rc', d.el).value.trim(), texto: $('#rx', d.el).value.trim() };
+        try { await onSave(body); d.close(); await cargar(); } catch (e) { const x = $('#re', d.el); x.textContent = errTxt(e); x.style.display = 'block'; }
+      };
+    };
+    const nr = $('#nr', main); if (nr) nr.onclick = () => form(null, 'Nueva regla', async b => { await api('/api/reglas', { method: 'POST', body: b }); toast('Regla creada.'); });
+    main.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => { const r = reglas.find(x => x.id === b.dataset.ed); form(r, 'Editar regla', async body => { await api('/api/reglas/' + r.id, { method: 'PUT', body }); toast('Regla guardada.'); }); });
+    main.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      const d = dialogo(`<h2 style="font-size:18px;margin-bottom:6px">Eliminar regla</h2><p class="muted">Se elimina de la empresa y deja de aplicarse en los análisis. Esta acción no se puede deshacer.</p>
+        <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-x>Cancelar</button><button class="btn danger" id="si">Eliminar</button></div>`);
+      $('#si', d.el).onclick = async () => { try { await api('/api/reglas/' + b.dataset.del, { method: 'DELETE' }); d.close(); toast('Regla eliminada.'); await cargar(); } catch (e) { d.close(); toast(errTxt(e)); } };
+    });
+  };
+  await cargar();
+};
+
+/* ---------- Plan de la empresa ---------- */
+V.plan = async main => {
+  const [emp, pers] = await Promise.all([api('/api/empresa'), api('/api/equipo')]);
+  const n = pers.length, tope = 10, pct = Math.min(100, Math.round(n / tope * 100));
+  main.innerHTML = `<div class="page">
+    <div class="card"><span class="tiny" style="letter-spacing:.04em;text-transform:uppercase;font-weight:600">Plan actual</span>
+      <div class="row" style="margin-top:4px"><h2 style="margin:0;font-size:20px">${esc(emp.nombre || 'Empresa')} · Plan Empresa</h2><span class="chip ok">Plan actual</span></div>
+      <p class="muted" style="margin:6px 0 12px">Hasta ${tope} usuarios, contando al administrador. ${emp.enProduccion ? 'En producción desde el ' + esc(emp.produccionDesde || '—') + '.' : 'Cuenta DEMO: aún no pasa a producción.'}</p>
+      <div class="prog"><i style="width:${pct}%"></i></div><p class="tiny" style="margin-top:6px">${n} de ${tope} usuarios</p></div>
+    <div class="grid g3">
+      <div class="card"><h2>Free</h2><p class="muted">Para probar la herramienta con un solo usuario.</p><span class="chip" style="margin-top:10px">Próximamente</span></div>
+      <div class="card" style="border-color:var(--pri)"><h2>Empresa</h2><p class="muted">Todo el flujo, el panel y hasta ${tope} usuarios.</p><span class="chip ok" style="margin-top:10px">Disponible · plan actual</span></div>
+      <div class="card"><h2>Empresarial</h2><p class="muted">A medida: más usuarios e integraciones.</p><span class="chip" style="margin-top:10px">Próximamente</span></div>
+    </div>
+    <p class="tiny">Cambiar de plan y pedir más usuarios se coordina con el equipo de ID.</p></div>`;
 };
 
 /* ---------- enrutador ---------- */
