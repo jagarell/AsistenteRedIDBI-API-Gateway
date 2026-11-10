@@ -163,3 +163,21 @@ a.kpi{display:block;text-decoration:none;color:inherit}
 @media(max-width:900px){.pn-g21{grid-template-columns:1fr}.pn-t{grid-template-columns:30px 1fr auto}.pn-st,.pn-tt{display:none}.pn-h{grid-template-columns:90px 1fr 26px}.pn-ac .tiny{width:70px}}
 .chip{white-space:nowrap}.rp-row td{white-space:nowrap}
 @media(max-width:900px){.grid.g3.pn-kpis{grid-template-columns:repeat(2,1fr)}.pn-kpis .kpi{padding:12px}.pn-kpis .kpi b{font-size:26px}.pn-kpis .pn-go{display:none}.rp-f .row{gap:6px}}
+
+/* Equipo y accesos · ficha, filtros y aviso de código; Mi cuenta */
+.av.sm{width:30px;height:30px;font-size:12px}
+.tab.sm{padding:4px 12px;font-size:13px}
+input[type=search]{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;width:100%}
+.eq-aviso{border-color:#F57C00;background:var(--warn-bg)}
+.eq-bar{align-items:center}
+.eq-barra{width:140px;height:6px;border-radius:99px;background:var(--s3);overflow:hidden}.eq-barra i{display:block;height:100%;background:var(--pri)}
+.eq-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.eq-wrap.con{grid-template-columns:minmax(0,1fr) 320px}
+.eq-main{min-width:0}.eq-main>.card+.card{margin-top:12px}
+.eq-r{cursor:pointer}.eq-r:hover td,.row.eq-r:hover{background:var(--s3)}
+tr.eq-r.on td,.row.eq-r.on{background:var(--info-bg)}
+tr.eq-r.off td{opacity:.65}.row.eq-r.off{opacity:.65}
+.eq-ficha{position:sticky;top:16px}
+.cu-sw{padding:8px 0;border-bottom:1px solid var(--bd)}.cu-sw:last-child{border-bottom:0}
+.cu-sw input{width:18px;height:18px;flex:none}
+@media(max-width:900px){.eq-wrap.con{grid-template-columns:minmax(0,1fr)}.eq-ficha{position:static}.eq-bar .tabs{overflow-x:auto;flex-wrap:nowrap}}
