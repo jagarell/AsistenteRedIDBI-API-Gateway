@@ -954,20 +954,44 @@ V.asistente = async main => {
 
 
 
-/* ---------- dictado por voz (Web Speech API del navegador) ---------- */
-const VOZ = window.SpeechRecognition || window.webkitSpeechRecognition;
-const micBtn = id => VOZ ? `<button type="button" class="btn sm" id="${id}" aria-label="Dictar" aria-pressed="false" title="Dictar">🎤</button>` : '';
-function dictar(btn, input) {
+/* ---------- dictado por voz: se graba en el navegador y el servidor transcribe ---------- */
+// El reconocimiento del navegador (Google) fallaba con los términos del oficio (AnyDesk, switch, IP…): el audio se manda a /api/transcribir.
+const VOZ = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+const VOZ_MAX_MS = 120000;
+const micBtn = id => VOZ ? `<button type="button" class="btn sm" id="${id}" aria-label="Dictar" aria-pressed="false" title="Dictar: toca para grabar y otra vez para terminar">🎤</button>` : '';
+async function dictar(btn, input) {
   if (!VOZ) return;
   if (btn._rec) { btn._rec.stop(); return; }
-  const r = new VOZ(); r.lang = 'es-PE'; r.interimResults = true; r.continuous = false;
-  const base = input.value ? input.value.trim() + ' ' : '';
-  btn._rec = r; btn.setAttribute('aria-pressed', 'true'); btn.classList.add('fill');
-  r.onresult = e => { input.value = base + Array.from(e.results).map(x => x[0].transcript).join(' '); };
-  const fin = () => { btn._rec = null; btn.setAttribute('aria-pressed', 'false'); btn.classList.remove('fill'); input.focus(); };
-  r.onend = fin;
-  r.onerror = e => { fin(); toast(e.error === 'not-allowed' ? 'Permite el micrófono en el navegador para dictar.' : 'No se pudo dictar. Escribe tu respuesta.'); };
-  try { r.start(); } catch (e) { fin(); }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { toast('Permite el micrófono en el navegador para dictar.'); return; }
+  const tipo = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  let rec;
+  try { rec = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined); }
+  catch (e) { stream.getTracks().forEach(x => x.stop()); toast('Tu navegador no puede grabar audio. Escribe tu respuesta.'); return; }
+  const trozos = [];
+  let tope = null;
+  const libre = () => { btn._rec = null; clearTimeout(tope); stream.getTracks().forEach(x => x.stop()); btn.setAttribute('aria-pressed', 'false'); btn.classList.remove('fill'); btn.textContent = '🎤'; };
+  rec.ondataavailable = e => { if (e.data && e.data.size) trozos.push(e.data); };
+  rec.onerror = () => { libre(); toast('No se pudo grabar. Escribe tu respuesta.'); };
+  rec.onstop = async () => {
+    libre();
+    const mime = rec.mimeType || tipo || 'audio/webm';
+    const blob = new Blob(trozos, { type: mime });
+    if (blob.size < 1500) { toast('No se escuchó nada. Mantén la grabación un poco más.'); return; }
+    btn.disabled = true; btn.textContent = '…'; toast('Transcribiendo…');
+    try {
+      const fd = new FormData(); fd.append('audio', blob, 'audio.' + (mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm'));
+      const r = await api('/api/transcribir', { method: 'POST', body: fd });
+      if (r && r.text) { input.value = (input.value ? input.value.trim() + ' ' : '') + r.text; input.dispatchEvent(new Event('input', { bubbles: true })); }
+      else toast((r && r.error) || 'No se pudo transcribir. Escribe tu respuesta.');
+    } catch (e) { toast(errTxt(e)); }
+    finally { btn.disabled = false; btn.textContent = '🎤'; input.focus(); }
+  };
+  btn._rec = rec; btn.setAttribute('aria-pressed', 'true'); btn.classList.add('fill'); btn.textContent = '⏹';
+  rec.start();
+  tope = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, VOZ_MAX_MS);
+  toast('Grabando… toca el micrófono otra vez para terminar.');
 }
 
 /* ---------- mapa de red (editor) ---------- */
